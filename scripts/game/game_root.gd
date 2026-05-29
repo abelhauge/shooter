@@ -3974,6 +3974,10 @@ func _run_hud_smoke_check() -> Dictionary:
 		return {"ok": false, "error": "HUD perf readout missing FPS/node count"}
 	if not bool(summary.get("has_feedback_label", false)):
 		return {"ok": false, "error": "HUD feedback label missing"}
+	if not bool(summary.get("has_minimap", false)):
+		return {"ok": false, "error": "HUD minimap missing"}
+	if int(summary.get("minimap_target_count", 0)) < 1:
+		return {"ok": false, "error": "HUD minimap has no enemy targets"}
 	return {"ok": true}
 
 func _run_art_layer_smoke_check() -> Dictionary:
@@ -4127,6 +4131,66 @@ func _spawn_hud() -> void:
 		hud.bind_player(local_player)
 	if hud.has_method("bind_match_director"):
 		hud.bind_match_director(match_director)
+	if hud.has_method("bind_map_provider"):
+		hud.bind_map_provider(self)
+
+func get_hud_map_snapshot() -> Dictionary:
+	if local_player == null:
+		return {}
+	var local_team_id := _get_local_team_id()
+	return {
+		"local_position": local_player.global_position,
+		"local_yaw": local_player.rotation.y,
+		"local_team_id": local_team_id,
+		"range_m": 85.0,
+		"enemies": _get_hud_map_enemies(local_team_id),
+	}
+
+func _get_local_team_id() -> int:
+	if network_session != null and network_session.is_active():
+		var local_peer_id := network_session.local_peer_id()
+		if _network_player_states.has(local_peer_id):
+			var state: Dictionary = _network_player_states[local_peer_id]
+			return int(state.get("team_id", 1))
+	return 1
+
+func _get_hud_map_enemies(local_team_id: int) -> Array:
+	var enemies := []
+	if network_session != null and network_session.is_active():
+		var local_peer_id := network_session.local_peer_id()
+		for peer_id in _network_player_states.keys():
+			if int(peer_id) == local_peer_id:
+				continue
+			var state: Dictionary = _network_player_states[peer_id]
+			var team_id := int(state.get("team_id", 0))
+			if team_id == local_team_id and not match_director.rules.friendly_fire:
+				continue
+			if not bool(state.get("is_alive", false)):
+				continue
+			enemies.append({
+				"peer_id": int(peer_id),
+				"team_id": team_id,
+				"position": state.get("position", Vector3.ZERO),
+			})
+		return enemies
+	_append_hud_map_dummy(enemies, _balance_dummy)
+	for group_name in ["combat_dummies", "balance_dummies"]:
+		for dummy in get_tree().get_nodes_in_group(group_name):
+			if dummy == _balance_dummy:
+				continue
+			_append_hud_map_dummy(enemies, dummy)
+	return enemies
+
+func _append_hud_map_dummy(enemies: Array, dummy: Variant) -> void:
+	if dummy == null or not is_instance_valid(dummy) or not (dummy is Node3D):
+		return
+	if dummy is DummyTarget and (dummy as DummyTarget).current_health <= 0.0:
+		return
+	enemies.append({
+		"peer_id": 0,
+		"team_id": 2,
+		"position": (dummy as Node3D).global_position,
+	})
 
 func _start_offline_match() -> void:
 	if active_map != null and active_map.has_method("get_spawn_points"):

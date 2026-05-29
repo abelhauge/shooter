@@ -1,8 +1,10 @@
 extends CanvasLayer
 
 const SNIPER_SCOPE_OVERLAY_SCRIPT := preload("res://scripts/ui/sniper_scope_overlay.gd")
+const HUD_MINIMAP_SCRIPT := preload("res://scripts/ui/hud_minimap.gd")
 
 var _player: PlayerController
+var _map_provider: Node
 var _root: Control
 var _debug_label: Label
 var _combat_label: Label
@@ -11,6 +13,7 @@ var _match_label: Label
 var _perf_label: Label
 var _crosshair_root: Control
 var _sniper_scope_overlay: Control
+var _mini_map
 var _feedback_timer := 0.0
 var _match_director: MatchDirector
 
@@ -26,11 +29,15 @@ func bind_player(player: PlayerController) -> void:
 func bind_match_director(match_director: MatchDirector) -> void:
 	_match_director = match_director
 
+func bind_map_provider(map_provider: Node) -> void:
+	_map_provider = map_provider
+
 func get_runtime_smoke_summary() -> Dictionary:
 	_update_debug()
 	_update_combat()
 	_update_match()
 	_update_perf()
+	_update_minimap()
 	_update_sniper_scope_overlay()
 	return {
 		"debug_text": _debug_label.text,
@@ -39,6 +46,9 @@ func get_runtime_smoke_summary() -> Dictionary:
 		"perf_text": _perf_label.text,
 		"has_feedback_label": _feedback_label != null,
 		"crosshair_visible": _crosshair_root.visible if _crosshair_root != null else false,
+		"has_minimap": _mini_map != null,
+		"minimap_target_count": _mini_map.get_target_count() if _mini_map != null else 0,
+		"minimap_range_m": _mini_map.get_range_m() if _mini_map != null else 0.0,
 		"sniper_scope_visible": _sniper_scope_overlay.visible if _sniper_scope_overlay != null else false,
 		"sniper_scope_progress": _sniper_scope_overlay.call("get_scope_progress") if _sniper_scope_overlay != null else 0.0,
 	}
@@ -52,6 +62,7 @@ func _process(delta: float) -> void:
 	_update_combat()
 	_update_match()
 	_update_perf()
+	_update_minimap()
 	_update_sniper_scope_overlay()
 	_feedback_label.visible = _feedback_timer > 0.0
 
@@ -93,6 +104,13 @@ func _build_ui() -> void:
 		Color(0.28, 0.78, 0.68, 0.72),
 		15
 	)
+
+	_mini_map = HUD_MINIMAP_SCRIPT.new()
+	_mini_map.name = "EnemyMiniMap"
+	_mini_map.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_mini_map.custom_minimum_size = Vector2(164.0, 164.0)
+	_mini_map.size = Vector2(164.0, 164.0)
+	_root.add_child(_mini_map)
 
 	_feedback_label = Label.new()
 	_feedback_label.name = "FeedbackLabel"
@@ -144,6 +162,13 @@ func _update_responsive_layout() -> void:
 	if _feedback_label != null:
 		_feedback_label.position = viewport_size * 0.5 + Vector2(-120.0, -62.0)
 		_feedback_label.size = Vector2(240.0, 44.0)
+	if _mini_map != null:
+		var map_size := clampf(viewport_size.x * 0.13, 136.0, 172.0)
+		_mini_map.size = Vector2(map_size, map_size)
+		_mini_map.position = Vector2(
+			maxf(18.0, viewport_size.x - map_size - 18.0),
+			102.0 if viewport_size.y >= 640.0 else 92.0
+		)
 
 func _add_readout_panel(position: Vector2, size: Vector2, color: Color, border_color: Color, font_size: int) -> Label:
 	var panel := PanelContainer.new()
@@ -242,6 +267,14 @@ func _update_perf() -> void:
 		Engine.get_frames_per_second(),
 		int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 	]
+
+func _update_minimap() -> void:
+	if _mini_map == null:
+		return
+	var snapshot := {}
+	if _map_provider != null and is_instance_valid(_map_provider) and _map_provider.has_method("get_hud_map_snapshot"):
+		snapshot = _map_provider.call("get_hud_map_snapshot")
+	_mini_map.set_snapshot(snapshot)
 
 func _update_sniper_scope_overlay() -> void:
 	if _sniper_scope_overlay == null or _crosshair_root == null:
