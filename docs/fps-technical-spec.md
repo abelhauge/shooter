@@ -37,29 +37,40 @@ Regel ved konflikt:
 
 ## Root launch-kontrakt
 
-V1 skal altid kunne startes med:
+V1 skal altid kunne startes fra repo-root med:
 
 ```bash
 ./run.sh
 ```
 
+På Windows skal samme kontrakt findes som:
+
+```bat
+run.cmd
+```
+
 Regler:
 
 - `run.sh` skal ligge i repo-root
+- `run.cmd` skal ligge i repo-root og være Windows-native pendant til `run.sh`
 - fremtidige agenter må ikke erstatte denne kontrakt med editor-only kørsel
-- scriptet må gerne udvides over tid, men kommandoen skal forblive `./run.sh`
+- scriptet må gerne udvides over tid, men kommandoerne skal forblive `./run.sh` og `run.cmd`
 - scriptet skal starte Godot-projektet fra repo-root uden at brugeren først skal vælge en scene manuelt
-- scriptet skal som default forsøge at synce den aktive git-branch med GitHub før Godot starter:
+- launch-scriptet skal som default forsøge at synce den aktive git-branch med GitHub før Godot starter:
   - auto-stage og commit lokale ændringer med en merge-/sync-commit
   - `git pull --no-rebase --no-edit` fra branchens upstream
   - `git push` tilbage til upstream
-- `SHOOTER_SKIP_GIT_SYNC=1 ./run.sh` må bruges til nød/CI/offline-kørsler, hvor launch skal testes uden netværks- eller git-sideeffekter
+- `SHOOTER_SKIP_GIT_SYNC=1 ./run.sh` og `set "SHOOTER_SKIP_GIT_SYNC=1" && run.cmd` må bruges til nød/CI/offline-kørsler, hvor launch skal testes uden netværks- eller git-sideeffekter
+- `install.sh` og `install.cmd` skal kunne verificere lokale dependencies og bootstrappe Godot-import/cache på henholdsvis Unix/macOS/Linux og Windows
 
 ## Anbefalet Godot-projektstruktur
 
 ```text
 /project.godot
 /run.sh
+/run.cmd
+/install.sh
+/install.cmd
 /AGENTS.md
 /docs/
   fps-design-brief.md
