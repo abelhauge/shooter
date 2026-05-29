@@ -7,6 +7,8 @@ signal join_requested(address: String, port: int, loadout: Dictionary)
 signal ready_requested()
 signal start_requested()
 
+const ABEL_PUBLIC_JOIN_ADDRESS := "203.0.113.77"
+
 var _status_label: Label
 var _address_edit: LineEdit
 var _port_edit: LineEdit
@@ -46,6 +48,9 @@ func smoke_press_join(address: String, port: int) -> void:
 	_address_edit.text = address
 	_port_edit.text = str(port)
 	_on_join_pressed()
+
+func smoke_press_join_abel() -> void:
+	_on_join_abel_pressed()
 
 func smoke_press_join_lan(index := 0) -> bool:
 	if _lan_hosts.is_empty() or index < 0 or index >= _lan_hosts.size():
@@ -172,8 +177,10 @@ func _build_ui() -> void:
 	_melee_option = _create_slot_option(box, "Melee", &"melee")
 	_artillery_option = _create_slot_option(box, "Artillery", &"artillery")
 
-	var action_row := HBoxContainer.new()
-	action_row.add_theme_constant_override("separation", 10)
+	var action_row := GridContainer.new()
+	action_row.columns = 2
+	action_row.add_theme_constant_override("h_separation", 10)
+	action_row.add_theme_constant_override("v_separation", 8)
 	box.add_child(action_row)
 
 	var offline_button := Button.new()
@@ -193,6 +200,12 @@ func _build_ui() -> void:
 	_style_button(join_button, Color(0.20, 0.30, 0.34, 1.0))
 	join_button.pressed.connect(_on_join_pressed)
 	action_row.add_child(join_button)
+
+	var join_abel_button := Button.new()
+	join_abel_button.text = "Join Abel"
+	_style_button(join_abel_button, Color(0.32, 0.42, 0.70, 1.0))
+	join_abel_button.pressed.connect(_on_join_abel_pressed)
+	action_row.add_child(join_abel_button)
 
 	var ready_row := HBoxContainer.new()
 	ready_row.add_theme_constant_override("separation", 10)
@@ -372,6 +385,11 @@ func _on_host_pressed() -> void:
 
 func _on_join_pressed() -> void:
 	join_requested.emit(_address_edit.text.strip_edges(), _read_port(), _selected_loadout())
+
+func _on_join_abel_pressed() -> void:
+	_address_edit.text = ABEL_PUBLIC_JOIN_ADDRESS
+	_port_edit.text = str(NetworkConstants.DEFAULT_PORT)
+	join_requested.emit(ABEL_PUBLIC_JOIN_ADDRESS, NetworkConstants.DEFAULT_PORT, _selected_loadout())
 
 func _on_join_lan_pressed() -> void:
 	if _lan_hosts.is_empty() or _lan_hosts_option == null:

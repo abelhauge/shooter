@@ -2636,3 +2636,35 @@ Visual QA for `docs/verification/screenshots/taser_gun_viewmodel.png`:
 - The HUD shows `Slot: secondary` and `Weapon: Taser Gun`, so the new weapon is selectable in the expected slot.
 - The taser placeholder is visible in the lower-right viewmodel area with a dark body and bright cyan top/probe accent.
 - The viewmodel does not overlap the crosshair, score HUD or health/ammo panel.
+
+## Remote Avatar Attachment And Animation Fix
+
+Date: 2026-05-29
+
+- Remote player weapons are now attached to the imported character rig via a `BoneAttachment3D` on `Wrist.R`, instead of being positioned as a free-floating child beside the proxy.
+- Remote players use the Quaternius character rig `AnimationPlayer` states: idle uses `Idle_Gun_Pointing`, running uses `Run`, airborne/jump currently uses `Roll` as the documented asset-pack fallback because the pack has no `Jump` or `Fall` clip.
+- The remote animation selector keeps a short movement hold after position snapshots, so proxies do not immediately snap back to idle between network updates.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --script tools/validate_remote_player_proxy_visuals.gd
+REMOTE_PROXY_VISUALS_PASS screenshot=res://docs/verification/screenshots/remote_player_proxy_visuals.png states_screenshot=res://docs/verification/screenshots/remote_player_proxy_animation_states.png
+EXIT=0
+```
+
+Visual QA for `docs/verification/screenshots/remote_player_proxy_visuals.png`:
+
+- The Worker avatar faces the camera correctly with the existing 180-degree correction.
+- The rifle is attached to the right wrist socket instead of floating separately beside the character.
+- The old proxy capsule, debug label, team marker plates and fallback weapon box are not visible.
+
+Visual QA for `docs/verification/screenshots/remote_player_proxy_animation_states.png`:
+
+- The state capture shows distinct rig poses for idle, running and airborne fallback.
+- The running character is visibly using a legged run animation rather than a static idle pose.
+- The airborne fallback is visibly different from standing/running; it uses the available `Roll` clip until a better jump/fall asset is introduced.

@@ -13,11 +13,24 @@ const TEAM_NAME_BY_ID := {
 	1: "blue",
 	2: "orange",
 }
-const REMOTE_WEAPON_SCENE_BY_SLOT := {
-	&"primary": "res://scenes/weapons/viewmodels/rifle_viewmodel.tscn",
-	&"secondary": "res://scenes/weapons/viewmodels/handgun_viewmodel.tscn",
+const REMOTE_WEAPON_PATH_BY_SLOT := {
+	&"primary": "res://assets/weapons/viewmodels/generated/rifle_from_fbx.glb",
+	&"secondary": "res://assets/weapons/viewmodels/generated/pistol_from_fbx.glb",
 }
 const AVATAR_YAW_CORRECTION_DEGREES := 180.0
+const REMOTE_WEAPON_ATTACHMENT_NAMES := ["Wrist.R", "LowerArm.R"]
+const REMOTE_WEAPON_TRANSFORM_BY_SLOT := {
+	&"primary": {
+		"position": Vector3(0.02, -0.04, -0.03),
+		"rotation": Vector3(-8.0, 180.0, 0.0),
+		"scale": Vector3(0.18, 0.18, 0.18),
+	},
+	&"secondary": {
+		"position": Vector3(0.035, -0.02, -0.045),
+		"rotation": Vector3(84.0, -78.0, -8.0),
+		"scale": Vector3(0.055, 0.055, 0.055),
+	},
+}
 
 @export var interpolation_sec := NetworkConstants.REMOTE_INTERPOLATION_SEC
 @export var show_debug_label := false
@@ -38,16 +51,21 @@ var is_alive := true
 
 var _avatar_root: Node3D
 var _remote_weapon_root: Node3D
+var _remote_weapon_socket: BoneAttachment3D
 var _animation_player: AnimationPlayer
 var _avatar_source_path := ""
 var _avatar_vertex_count := 0
 var _active_animation := ""
+var _available_animations: Array[String] = []
 var _remote_weapon_source_path := ""
 var _remote_weapon_vertex_count := 0
+var _remote_weapon_attachment_name := ""
+var _remote_weapon_attached_to_avatar := false
 var _snapshot_count := 0
 var _headless_visuals := false
 var _previous_position := Vector3.ZERO
 var _remote_speed_mps := 0.0
+var _movement_animation_hold_sec := 0.0
 
 func _ready() -> void:
 	_headless_visuals = _should_skip_remote_visuals()
@@ -58,9 +76,6 @@ func _ready() -> void:
 	add_child(_avatar_root)
 	_remote_weapon_root = Node3D.new()
 	_remote_weapon_root.name = "RemoteWeaponRoot"
-	_remote_weapon_root.position = Vector3(0.28, 1.20, -0.34)
-	_remote_weapon_root.rotation_degrees = Vector3(-5.0, 0.0, -3.0)
-	_remote_weapon_root.scale = Vector3.ONE
 	add_child(_remote_weapon_root)
 	weapon_box.visible = false
 	if _headless_visuals:
@@ -73,12 +88,15 @@ func _process(delta: float) -> void:
 	rotation.y = lerp_angle(rotation.y, target_yaw, t)
 	_remote_speed_mps = global_position.distance_to(_previous_position) / maxf(delta, 0.001)
 	_previous_position = global_position
+	_movement_animation_hold_sec = maxf(0.0, _movement_animation_hold_sec - delta)
 	visible = is_alive
 	label.text = "Peer %d  T%d\n%s\n%s  %.0f HP" % [peer_id, team_id, String(movement_state), String(active_slot), health]
 	label.visible = show_debug_label
 	_update_animation()
 
 func apply_snapshot(position: Vector3, yaw: float, pitch: float, state: StringName, slot: StringName) -> void:
+	if target_position.distance_to(position) > 0.08:
+		_movement_animation_hold_sec = 1.0
 	target_position = position
 	target_yaw = yaw
 	target_pitch = pitch
@@ -107,16 +125,21 @@ func get_runtime_summary() -> Dictionary:
 		"avatar_yaw_correction_degrees": AVATAR_YAW_CORRECTION_DEGREES,
 		"has_animation_player": _animation_player != null,
 		"active_animation": _active_animation,
+		"available_animations": _available_animations,
 		"has_team_marker_plates": false,
 		"remote_weapon_source_path": _remote_weapon_source_path,
 		"has_remote_weapon_asset": _remote_weapon_vertex_count > 0,
 		"remote_weapon_vertex_count": _remote_weapon_vertex_count,
+		"remote_weapon_attachment_name": _remote_weapon_attachment_name,
+		"remote_weapon_attached_to_avatar": _remote_weapon_attached_to_avatar,
 		"uses_fallback_body": body.visible,
 		"uses_fallback_weapon_box": weapon_box.visible,
 		"snapshot_count": _snapshot_count,
 		"target_position": target_position,
 		"target_yaw": target_yaw,
 		"current_yaw": rotation.y,
+		"remote_speed_mps": _remote_speed_mps,
+		"movement_animation_hold_sec": _movement_animation_hold_sec,
 		"is_alive": is_alive,
 		"debug_label_visible": label.visible,
 	}
@@ -130,6 +153,12 @@ func _load_team_avatar(next_team_id: int) -> void:
 	_avatar_vertex_count = 0
 	_animation_player = null
 	_active_animation = ""
+	_available_animations = []
+	_remote_weapon_attachment_name = ""
+	_remote_weapon_attached_to_avatar = false
+	_remote_weapon_socket = null
+	if _remote_weapon_root != null and _remote_weapon_root.get_parent() != self:
+		_remote_weapon_root.reparent(self, false)
 	if _headless_visuals:
 		body.visible = false
 		return
@@ -143,6 +172,9 @@ func _load_team_avatar(next_team_id: int) -> void:
 	_avatar_root.add_child(avatar)
 	_hide_embedded_weapon_meshes(avatar)
 	_animation_player = _find_animation_player(avatar)
+	_available_animations = _collect_animation_names(_animation_player)
+	_configure_animation_loops()
+	_attach_weapon_root_to_avatar(avatar)
 	_avatar_vertex_count = _count_mesh_vertices(avatar)
 	body.visible = false
 	_update_animation()
@@ -159,20 +191,19 @@ func _refresh_remote_weapon() -> void:
 	_remote_weapon_source_path = ""
 	_remote_weapon_vertex_count = 0
 	weapon_box.visible = false
-	if _headless_visuals or not REMOTE_WEAPON_SCENE_BY_SLOT.has(active_slot):
+	_remote_weapon_attached_to_avatar = _remote_weapon_root.get_parent() != self
+	if _headless_visuals or not REMOTE_WEAPON_PATH_BY_SLOT.has(active_slot):
 		return
-	var weapon_scene := ResourceLoader.load(REMOTE_WEAPON_SCENE_BY_SLOT[active_slot], "PackedScene") as PackedScene
-	if weapon_scene == null:
-		return
-	var weapon := weapon_scene.instantiate() as Node3D
+	var weapon := _load_gltf_scene(REMOTE_WEAPON_PATH_BY_SLOT[active_slot], "Remote weapon GLB import failed")
 	if weapon == null:
 		return
 	weapon.name = "RemoteWeapon_%s" % String(active_slot)
-	weapon.position = Vector3.ZERO
-	weapon.rotation_degrees = Vector3.ZERO
-	weapon.scale = Vector3.ONE
+	var transform_data: Dictionary = REMOTE_WEAPON_TRANSFORM_BY_SLOT.get(active_slot, {})
+	weapon.position = transform_data.get("position", Vector3.ZERO)
+	weapon.rotation_degrees = transform_data.get("rotation", Vector3.ZERO)
+	weapon.scale = transform_data.get("scale", Vector3(0.1, 0.1, 0.1))
 	_remote_weapon_root.add_child(weapon)
-	_remote_weapon_source_path = REMOTE_WEAPON_SCENE_BY_SLOT[active_slot]
+	_remote_weapon_source_path = REMOTE_WEAPON_PATH_BY_SLOT[active_slot]
 	_remote_weapon_vertex_count = _count_mesh_vertices(weapon)
 
 func _load_gltf_scene(path: String, error_context: String) -> Node3D:
@@ -193,6 +224,64 @@ func _find_animation_player(root: Node) -> AnimationPlayer:
 			return found
 	return null
 
+func _collect_animation_names(animation_player: AnimationPlayer) -> Array[String]:
+	var names: Array[String] = []
+	if animation_player == null:
+		return names
+	for animation_name in animation_player.get_animation_list():
+		names.append(String(animation_name))
+	return names
+
+func _configure_animation_loops() -> void:
+	if _animation_player == null:
+		return
+	for animation_name in ["Idle", "Idle_Gun", "Idle_Gun_Pointing", "Run", "Run_Back", "Run_Left", "Run_Right", "Run_Shoot", "Walk", "Roll"]:
+		if _animation_player.has_animation(animation_name):
+			var animation := _animation_player.get_animation(animation_name)
+			if animation != null:
+				animation.loop_mode = Animation.LOOP_LINEAR
+
+func _attach_weapon_root_to_avatar(avatar: Node) -> void:
+	if _remote_weapon_root == null:
+		return
+	var skeleton := _find_skeleton(avatar)
+	var bone_name := _first_existing_bone_name(skeleton, REMOTE_WEAPON_ATTACHMENT_NAMES)
+	if skeleton != null and bone_name != "":
+		_remote_weapon_socket = BoneAttachment3D.new()
+		_remote_weapon_socket.name = "RemoteWeaponSocket"
+		_remote_weapon_socket.bone_name = bone_name
+		skeleton.add_child(_remote_weapon_socket)
+		_remote_weapon_root.reparent(_remote_weapon_socket, false)
+		_remote_weapon_root.position = Vector3.ZERO
+		_remote_weapon_root.rotation_degrees = Vector3.ZERO
+		_remote_weapon_root.scale = Vector3.ONE
+		_remote_weapon_attachment_name = bone_name
+		_remote_weapon_attached_to_avatar = true
+	else:
+		_remote_weapon_root.reparent(self, false)
+		_remote_weapon_root.position = Vector3(0.28, 1.20, -0.34)
+		_remote_weapon_root.rotation_degrees = Vector3(-5.0, 0.0, -3.0)
+		_remote_weapon_root.scale = Vector3.ONE
+		_remote_weapon_attachment_name = ""
+		_remote_weapon_attached_to_avatar = false
+
+func _find_skeleton(root_node: Node) -> Skeleton3D:
+	if root_node is Skeleton3D:
+		return root_node as Skeleton3D
+	for child in root_node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+func _first_existing_bone_name(skeleton: Skeleton3D, bone_names: Array) -> String:
+	if skeleton == null:
+		return ""
+	for bone_name in bone_names:
+		if skeleton.find_bone(String(bone_name)) >= 0:
+			return String(bone_name)
+	return ""
+
 func _update_animation() -> void:
 	if _animation_player == null:
 		return
@@ -207,10 +296,12 @@ func _select_animation_name() -> String:
 		return _first_existing_animation(["Death"])
 	if movement_state == &"stunned":
 		return _first_existing_animation(["HitRecieve", "Idle_Gun"])
+	if movement_state == &"airborne":
+		return _first_existing_animation(["Roll", "Run", "Idle_Gun_Pointing"])
 	if movement_state == &"sliding" or movement_state == &"wallrunning":
 		return _first_existing_animation(["Run", "Run_Shoot", "Idle_Gun"])
-	if _remote_speed_mps > 0.35:
-		return _first_existing_animation(["Run_Shoot", "Run", "Walk"])
+	if _remote_speed_mps > 0.35 or _movement_animation_hold_sec > 0.0:
+		return _first_existing_animation(["Run", "Run_Shoot", "Walk"])
 	return _first_existing_animation(["Idle_Gun_Pointing", "Idle_Gun", "Idle"])
 
 func _first_existing_animation(candidates: Array[String]) -> String:
