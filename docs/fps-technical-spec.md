@@ -49,6 +49,11 @@ Regler:
 - fremtidige agenter må ikke erstatte denne kontrakt med editor-only kørsel
 - scriptet må gerne udvides over tid, men kommandoen skal forblive `./run.sh`
 - scriptet skal starte Godot-projektet fra repo-root uden at brugeren først skal vælge en scene manuelt
+- scriptet skal som default forsøge at synce den aktive git-branch med GitHub før Godot starter:
+  - auto-stage og commit lokale ændringer med en merge-/sync-commit
+  - `git pull --no-rebase --no-edit` fra branchens upstream
+  - `git push` tilbage til upstream
+- `SHOOTER_SKIP_GIT_SYNC=1 ./run.sh` må bruges til nød/CI/offline-kørsler, hvor launch skal testes uden netværks- eller git-sideeffekter
 
 ## Anbefalet Godot-projektstruktur
 
