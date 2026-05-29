@@ -26,6 +26,7 @@ var remote_proxies: Dictionary = {}
 var _arena_spawn_points: Array[SpawnPoint] = []
 var _network_player_states: Dictionary = {}
 var _network_weapon_states: Dictionary = {}
+var _network_game_ready_peers: Dictionary = {}
 var _weapon_definitions: Dictionary = {}
 var _network_send_accum := 0.0
 var _network_bound := false
@@ -56,6 +57,23 @@ func set_network_session(session: NetworkSession) -> void:
 	network_session = session
 	if is_node_ready():
 		_bind_network_session()
+
+func set_network_peer_scene_ready(peer_id: int, is_ready: bool) -> void:
+	if peer_id <= 0:
+		return
+	if is_ready:
+		_network_game_ready_peers[peer_id] = true
+	else:
+		_network_game_ready_peers.erase(peer_id)
+	if (
+		is_ready
+		and network_session != null
+		and network_session.is_active()
+		and multiplayer.is_server()
+		and peer_id != network_session.local_peer_id()
+	):
+		_send_current_respawn_to_peer(peer_id)
+		_send_authoritative_snapshot_to_peer(peer_id)
 
 func set_selected_loadout(loadout: LoadoutDefinition) -> void:
 	selected_loadout = loadout
@@ -4221,7 +4239,7 @@ func _update_network_sync(delta: float) -> void:
 	_network_send_accum = 0.0
 	var active_slot := local_player.get_weapon_controller().active_slot
 	if multiplayer.is_server():
-		receive_player_transform.rpc(
+		_send_player_transform_to_ready_peers(
 			network_session.local_peer_id(),
 			local_player.global_position,
 			local_player.rotation.y,
@@ -4249,6 +4267,7 @@ func _on_network_peer_joined(peer_id: int) -> void:
 		_send_authoritative_snapshot()
 
 func _on_network_peer_left(peer_id: int) -> void:
+	_network_game_ready_peers.erase(peer_id)
 	if remote_proxies.has(peer_id):
 		remote_proxies[peer_id].queue_free()
 		remote_proxies.erase(peer_id)
@@ -4279,6 +4298,7 @@ func _load_network_weapon_definitions() -> void:
 func _activate_network_match() -> void:
 	local_player.get_weapon_controller().set_multiplayer_combat_enabled(true)
 	var peer_id := network_session.local_peer_id()
+	set_network_peer_scene_ready(peer_id, true)
 	_ensure_network_player_state(peer_id)
 	if multiplayer.is_server():
 		_respawn_network_peer(peer_id)
@@ -4297,6 +4317,26 @@ func _on_network_session_closed() -> void:
 	remote_proxies.clear()
 	_network_player_states.clear()
 	_network_weapon_states.clear()
+	_network_game_ready_peers.clear()
+
+func _is_network_peer_scene_ready(peer_id: int) -> bool:
+	if network_session == null or not network_session.is_active():
+		return true
+	if peer_id == network_session.local_peer_id():
+		return true
+	return bool(_network_game_ready_peers.get(peer_id, false))
+
+func _ready_remote_peer_ids() -> Array:
+	var peers := []
+	if network_session == null or not network_session.is_active():
+		return peers
+	for peer_id_key in _network_player_states.keys():
+		var peer_id := int(peer_id_key)
+		if peer_id == network_session.local_peer_id():
+			continue
+		if _is_network_peer_scene_ready(peer_id):
+			peers.append(peer_id)
+	return peers
 
 func _ensure_network_player_state(peer_id: int) -> Dictionary:
 	if _network_player_states.has(peer_id):
@@ -4443,7 +4483,7 @@ func _respawn_network_peer(peer_id: int) -> void:
 		local_player.set_stun_remaining_sec(0.0)
 		local_player.get_health_component().force_network_state(100.0, true, match_director.rules.spawn_protection_sec)
 		local_player.get_weapon_controller().apply_authoritative_weapon_states(_network_weapon_states[peer_id])
-	receive_network_respawn.rpc(peer_id, spawn_position, yaw, team_id)
+	_send_network_respawn_to_ready_peers(peer_id, spawn_position, yaw, team_id)
 
 func _choose_network_spawn(team_id: int) -> SpawnPoint:
 	var candidates: Array[SpawnPoint] = []
@@ -4514,10 +4554,10 @@ func _process_authoritative_fire(peer_id: int, weapon_id: StringName, origin: Ve
 		var landing_position := _estimate_throw_landing(origin, direction, shooter_velocity, definition)
 		if definition.weapon_id == &"grenade":
 			_apply_network_radius_damage(peer_id, landing_position, definition)
-			receive_explosion_marker.rpc(landing_position, definition.effect_radius_m)
+			_send_explosion_marker_to_ready_peers(landing_position, definition.effect_radius_m)
 		else:
 			_spawn_network_smoke(landing_position, definition.effect_duration_sec, definition.effect_radius_m)
-			receive_smoke_volume.rpc(landing_position, definition.effect_duration_sec, definition.effect_radius_m)
+			_send_smoke_volume_to_ready_peers(landing_position, definition.effect_duration_sec, definition.effect_radius_m)
 		_send_authoritative_snapshot()
 		return
 	if definition.fire_mode == &"self_buff" or definition.fire_mode == &"portal":
@@ -4713,8 +4753,44 @@ func _send_authoritative_snapshot() -> void:
 	if network_session == null or not network_session.is_active() or not multiplayer.is_server():
 		return
 	var snapshot := _build_match_snapshot()
-	receive_match_snapshot.rpc(snapshot)
+	for peer_id in _ready_remote_peer_ids():
+		receive_match_snapshot.rpc_id(peer_id, snapshot)
 	_apply_match_snapshot(snapshot)
+
+func _send_authoritative_snapshot_to_peer(peer_id: int) -> void:
+	if network_session == null or not network_session.is_active() or not multiplayer.is_server():
+		return
+	if peer_id == network_session.local_peer_id() or not _is_network_peer_scene_ready(peer_id):
+		return
+	receive_match_snapshot.rpc_id(peer_id, _build_match_snapshot())
+
+func _send_player_transform_to_ready_peers(peer_id: int, position: Vector3, yaw: float, pitch: float, state: StringName, slot: StringName) -> void:
+	for target_peer_id in _ready_remote_peer_ids():
+		receive_player_transform.rpc_id(target_peer_id, peer_id, position, yaw, pitch, state, slot)
+
+func _send_network_respawn_to_ready_peers(peer_id: int, position: Vector3, yaw: float, team_id: int) -> void:
+	for target_peer_id in _ready_remote_peer_ids():
+		receive_network_respawn.rpc_id(target_peer_id, peer_id, position, yaw, team_id)
+
+func _send_current_respawn_to_peer(peer_id: int) -> void:
+	if not _network_player_states.has(peer_id) or not _is_network_peer_scene_ready(peer_id):
+		return
+	var state: Dictionary = _network_player_states[peer_id]
+	receive_network_respawn.rpc_id(
+		peer_id,
+		peer_id,
+		state.get("position", Vector3.ZERO),
+		float(state.get("yaw", 0.0)),
+		int(state.get("team_id", 1))
+	)
+
+func _send_smoke_volume_to_ready_peers(position: Vector3, duration: float, radius: float) -> void:
+	for peer_id in _ready_remote_peer_ids():
+		receive_smoke_volume.rpc_id(peer_id, position, duration, radius)
+
+func _send_explosion_marker_to_ready_peers(position: Vector3, radius: float) -> void:
+	for peer_id in _ready_remote_peer_ids():
+		receive_explosion_marker.rpc_id(peer_id, position, radius)
 
 func _apply_match_snapshot(snapshot: Dictionary) -> void:
 	match_director.apply_network_summary(snapshot)
@@ -4755,7 +4831,7 @@ func submit_player_transform(position: Vector3, yaw: float, pitch: float, state:
 	player_state["movement_state"] = state
 	player_state["current_slot"] = slot
 	_apply_remote_snapshot(sender, position, yaw, pitch, state, slot)
-	receive_player_transform.rpc(sender, position, yaw, pitch, state, slot)
+	_send_player_transform_to_ready_peers(sender, position, yaw, pitch, state, slot)
 
 @rpc("authority", "unreliable")
 func receive_player_transform(peer_id: int, position: Vector3, yaw: float, pitch: float, state: StringName, slot: StringName) -> void:

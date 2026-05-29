@@ -111,13 +111,53 @@ def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_
     return ok
 
 
+def run_lan_discovery(port: int, timeout_sec: float) -> bool:
+    procs: list[tuple[str, subprocess.Popen[str]]] = []
+    host = subprocess.Popen(
+        godot_cmd([
+            "--smoke-test=lan-discovery-host",
+            "--smoke-expected-peers=1",
+            f"--smoke-port={port}",
+            f"--smoke-timeout-sec={int(timeout_sec)}",
+        ]),
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    procs.append(("lan-discovery-host", host))
+    time.sleep(1.0)
+
+    client = subprocess.Popen(
+        godot_cmd([
+            "--smoke-test=lan-discovery-client",
+            f"--smoke-timeout-sec={int(timeout_sec)}",
+        ]),
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    procs.append(("lan-discovery-client", client))
+
+    ok = True
+    for proc_name, proc in procs:
+        ok = collect_process(proc_name, proc, timeout_sec + 8.0) and ok
+
+    for _, proc in procs:
+        if proc.poll() is None:
+            proc.kill()
+
+    return ok
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "suite",
         nargs="?",
         default="all",
-        choices=("all", "offline", "weapons", "network", "lobby", "lobby-validation", "2v2", "3v3"),
+        choices=("all", "offline", "weapons", "network", "lobby", "lan-discovery", "lobby-validation", "2v2", "3v3"),
     )
     parser.add_argument("--base-port", type=int, default=24610)
     args = parser.parse_args()
@@ -127,6 +167,7 @@ def main() -> int:
         "weapons",
         "network",
         "lobby",
+        "lan-discovery",
         "lobby-validation",
         "2v2",
         "3v3",
@@ -141,6 +182,8 @@ def main() -> int:
             ok = run_group("network", args.base_port + 1, 1, False, 14.0) and ok
         elif suite == "lobby":
             ok = run_group("lobby", args.base_port + 2, 1, True, 16.0) and ok
+        elif suite == "lan-discovery":
+            ok = run_lan_discovery(args.base_port + 5, 16.0) and ok
         elif suite == "lobby-validation":
             ok = run_single(
                 "lobby-validation",
