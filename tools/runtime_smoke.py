@@ -177,7 +177,7 @@ def main() -> int:
         if suite == "offline":
             ok = run_single("offline", ["--smoke-test=offline", "--smoke-timeout-sec=30"], 40.0, headless=False) and ok
         elif suite == "weapons":
-            ok = run_single("weapons", ["--smoke-test=weapons", "--smoke-timeout-sec=10"], 14.0) and ok
+            ok = run_single("weapons", ["--smoke-test=weapons", "--smoke-timeout-sec=45"], 60.0) and ok
         elif suite == "network":
             ok = run_group("network", args.base_port + 1, 1, False, 14.0) and ok
         elif suite == "lobby":

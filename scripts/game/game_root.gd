@@ -34,6 +34,7 @@ var _capture_freeze_remote_proxies := false
 var _rooftop_config: Resource
 var _rooftop_fog_visual_root: Node3D
 var _balance_dummy: DummyTarget
+var _dev_balance_dummy_enabled := false
 
 func _ready() -> void:
 	_load_network_weapon_definitions()
@@ -42,7 +43,8 @@ func _ready() -> void:
 	_spawn_local_player()
 	_bind_dummies()
 	_start_offline_match()
-	_spawn_balance_dummy()
+	if _dev_balance_dummy_enabled:
+		_spawn_balance_dummy()
 	_spawn_hud()
 	_bind_network_session()
 
@@ -80,6 +82,16 @@ func set_selected_loadout(loadout: LoadoutDefinition) -> void:
 	if local_player != null:
 		local_player.get_weapon_controller().set_loadout_definition(selected_loadout)
 
+func set_dev_balance_dummy_enabled(enabled: bool) -> void:
+	_dev_balance_dummy_enabled = enabled
+	if not is_node_ready():
+		return
+	if _dev_balance_dummy_enabled:
+		_spawn_balance_dummy()
+	elif _balance_dummy != null and is_instance_valid(_balance_dummy):
+		_balance_dummy.queue_free()
+		_balance_dummy = null
+
 func get_runtime_smoke_summary() -> Dictionary:
 	var team_counts := _build_network_team_counts()
 	return {
@@ -92,6 +104,8 @@ func get_runtime_smoke_summary() -> Dictionary:
 		"network_players": _network_player_states.size(),
 		"remote_proxies": remote_proxies.size(),
 		"team_counts": team_counts,
+		"dev_balance_dummy_enabled": _dev_balance_dummy_enabled,
+		"has_balance_dummy": _balance_dummy != null and is_instance_valid(_balance_dummy),
 		"rooftop_ground_kill_height_y": _rooftop_config.ground_kill_height_y if _rooftop_config != null else 0.0,
 	}
 
@@ -3278,7 +3292,7 @@ func _build_p06_remote_report() -> Dictionary:
 		"fallback_remote_count": fallback_count,
 		"synced_remote_count": synced_count,
 		"team_ids": team_ids.keys(),
-		"team_readability_method": "blue/orange emissive chest, back, and shoulder plates attached to the humanoid proxy",
+		"team_readability_method": "team-specific humanoid assets without extra proxy marker plates",
 		"remotes": summaries,
 	}
 

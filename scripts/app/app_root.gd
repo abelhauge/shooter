@@ -69,6 +69,7 @@ var _p08_client_hold_sec := 18.0
 var _network_arg_requested_host := false
 var _network_arg_requested_join := false
 var _verification_capture := ""
+var _dev_balance_dummy_enabled_for_next_game := false
 
 func _ready() -> void:
 	_parse_smoke_args()
@@ -103,6 +104,8 @@ func _load_game_root() -> void:
 	_active_scene = game_root
 	if _active_scene.has_method("set_selected_loadout"):
 		_active_scene.set_selected_loadout(_selected_loadout)
+	if _active_scene.has_method("set_dev_balance_dummy_enabled"):
+		_active_scene.set_dev_balance_dummy_enabled(_dev_balance_dummy_enabled_for_next_game)
 	if _active_scene.has_method("set_network_session"):
 		_active_scene.set_network_session(_network_session)
 	add_child(_active_scene)
@@ -4015,11 +4018,13 @@ func _bind_network_session() -> void:
 
 func _on_lobby_offline_requested(loadout: Dictionary) -> void:
 	_apply_selected_loadout(loadout)
+	_dev_balance_dummy_enabled_for_next_game = true
 	_network_session.close()
 	_load_game_root()
 
 func _on_lobby_host_requested(port: int, loadout: Dictionary) -> void:
 	_apply_selected_loadout(loadout)
+	_dev_balance_dummy_enabled_for_next_game = false
 	_game_scene_ready_by_peer.clear()
 	var error := _network_session.host(port)
 	if error == OK:
@@ -4028,6 +4033,7 @@ func _on_lobby_host_requested(port: int, loadout: Dictionary) -> void:
 
 func _on_lobby_join_requested(address: String, port: int, loadout: Dictionary) -> void:
 	_apply_selected_loadout(loadout)
+	_dev_balance_dummy_enabled_for_next_game = false
 	if address == "":
 		_set_lobby_status("Enter a host IP address before joining.", false, false)
 		return

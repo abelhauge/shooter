@@ -65,6 +65,8 @@ var _portal_transport_cooldown_sec := 0.0
 var _input_locked := false
 var _sniper_scope_progress := 0.0
 var _camera_default_fov := 0.0
+var _view_model_recoil_tween: Tween
+var _fire_feedback_count := 0
 
 func _ready() -> void:
 	_load_definitions()
@@ -387,6 +389,9 @@ func get_view_model_runtime_summary() -> Dictionary:
 		"summary": loader_summary,
 	}
 
+func get_fire_feedback_count_for_verification() -> int:
+	return _fire_feedback_count
+
 func reset_portals_for_verification() -> void:
 	_clear_portals()
 
@@ -546,6 +551,8 @@ func _try_fire_active_weapon(definition: WeaponDefinition, state: WeaponRuntimeS
 	_spawn_first_person_fire_feedback(definition)
 	_apply_primary_fire_propulsion(definition, direction)
 	if _multiplayer_combat_enabled:
+		if definition.is_hitscan or definition.fire_mode == &"melee":
+			_fire_local_debug_target_trace(definition, origin, direction, camera)
 		if definition.fire_mode == &"self_buff":
 			_apply_self_buff(definition)
 		elif definition.fire_mode == &"portal":
@@ -688,6 +695,45 @@ func _fire_single_trace(definition: WeaponDefinition, origin: Vector3, direction
 	event.amount = definition.head_damage if event.is_headshot else definition.body_damage
 	var killed: bool = collider.apply_damage(event)
 	hit_confirmed.emit(event.amount, killed)
+
+func _fire_local_debug_target_trace(definition: WeaponDefinition, origin: Vector3, direction: Vector3, camera: Camera3D) -> void:
+	var pellets := maxi(1, definition.pellets_per_shot)
+	for _index in range(pellets):
+		var pellet_direction := direction
+		if definition.is_hitscan and definition.spread_degrees > 0.0:
+			pellet_direction = _apply_spread(direction, definition.spread_degrees)
+		_fire_single_local_debug_target_trace(definition, origin, pellet_direction, camera)
+
+func _fire_single_local_debug_target_trace(definition: WeaponDefinition, origin: Vector3, direction: Vector3, camera: Camera3D) -> void:
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * definition.max_range_m)
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	if _owner_body != null:
+		query.exclude = [_owner_body.get_rid()]
+	var hit := camera.get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return
+	var collider: Object = hit["collider"]
+	if not _is_local_debug_target(collider):
+		return
+	if definition.fire_mode == &"utility":
+		_apply_utility_effect(definition, collider)
+		return
+	var event := DamageEvent.new()
+	event.weapon_id = definition.weapon_id
+	event.hit_position = hit["position"]
+	event.hit_normal = hit["normal"]
+	if collider.has_method("is_headshot_position") and collider.is_headshot_position(event.hit_position):
+		event.is_headshot = true
+	event.amount = definition.head_damage if event.is_headshot else definition.body_damage
+	var killed: bool = collider.apply_damage(event)
+	hit_confirmed.emit(event.amount, killed)
+
+func _is_local_debug_target(collider: Object) -> bool:
+	return (
+		collider is DummyTarget
+		or (collider is Node and ((collider as Node).is_in_group("combat_dummies") or (collider as Node).is_in_group("balance_dummies")))
+	)
 
 func _fire_projectile(definition: WeaponDefinition, origin: Vector3, direction: Vector3, _camera: Camera3D) -> void:
 	if _projectiles_root == null:
@@ -861,9 +907,26 @@ func _spawn_impact(position: Vector3, normal: Vector3) -> void:
 func _spawn_muzzle_flash(lifetime_sec := 0.08, visual_scale := 1.0) -> void:
 	if _view_model_root == null:
 		return
+	var flash_visual := MeshInstance3D.new()
+	flash_visual.name = "MuzzleFlashVisual"
+	var flash_mesh := SphereMesh.new()
+	flash_mesh.radius = 0.055 * visual_scale
+	flash_mesh.height = 0.09 * visual_scale
+	flash_visual.mesh = flash_mesh
+	flash_visual.position = Vector3(0.24, -0.11, -0.74)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = Color(1.0, 0.62, 0.20, 0.88)
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.46, 0.12, 1.0)
+	material.emission_energy_multiplier = 3.0
+	flash_visual.material_override = material
+	_view_model_root.add_child(flash_visual)
+
 	var flash := OmniLight3D.new()
 	flash.name = "MuzzleFlash"
-	flash.position = Vector3(0.18, -0.03, -1.05)
+	flash.position = flash_visual.position
 	flash.light_color = Color(1.0, 0.66, 0.30)
 	flash.light_energy = 2.6 * visual_scale
 	flash.omni_range = 1.8 * visual_scale
@@ -871,19 +934,31 @@ func _spawn_muzzle_flash(lifetime_sec := 0.08, visual_scale := 1.0) -> void:
 	var tween := flash.create_tween()
 	tween.tween_property(flash, "light_energy", 0.0, lifetime_sec)
 	tween.tween_callback(flash.queue_free)
+	var visual_tween := flash_visual.create_tween()
+	visual_tween.tween_property(flash_visual, "scale", Vector3.ONE * 0.25, lifetime_sec)
+	visual_tween.tween_callback(flash_visual.queue_free)
 
 func _spawn_first_person_fire_feedback(definition: WeaponDefinition, visual_scale := 1.0, lifetime_sec := 0.08) -> void:
+	_fire_feedback_count += 1
 	_play_view_model_recoil(definition)
-	if [&"assault_rifle", &"handgun"].has(definition.weapon_id):
-		return
 	if definition.weapon_id == &"flamethrower":
 		_spawn_flame_burst(visual_scale)
 	else:
-		_spawn_muzzle_flash(lifetime_sec, visual_scale)
+		var scaled_flash := visual_scale
+		var scaled_lifetime := lifetime_sec
+		if definition.weapon_id == &"assault_rifle":
+			scaled_flash = 1.05
+			scaled_lifetime = 0.055
+		elif definition.weapon_id == &"handgun":
+			scaled_flash = 0.82
+			scaled_lifetime = 0.06
+		_spawn_muzzle_flash(scaled_lifetime, scaled_flash)
 
 func _play_view_model_recoil(definition: WeaponDefinition) -> void:
 	if _current_view_model == null or not is_instance_valid(_current_view_model):
 		return
+	if _view_model_recoil_tween != null and _view_model_recoil_tween.is_valid():
+		_view_model_recoil_tween.kill()
 	var kick_scale := 1.0
 	if definition.weapon_id == &"assault_rifle":
 		kick_scale = 0.62
@@ -895,10 +970,10 @@ func _play_view_model_recoil(definition: WeaponDefinition) -> void:
 	var recoil_rotation := Vector3(-4.5, randf_range(-0.7, 0.7), randf_range(-0.8, 0.8)) * kick_scale
 	_current_view_model.position = recoil_offset
 	_current_view_model.rotation_degrees = recoil_rotation
-	var tween := _current_view_model.create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(_current_view_model, "position", Vector3.ZERO, 0.105)
-	tween.tween_property(_current_view_model, "rotation_degrees", Vector3.ZERO, 0.105)
+	_view_model_recoil_tween = _current_view_model.create_tween()
+	_view_model_recoil_tween.set_parallel(true)
+	_view_model_recoil_tween.tween_property(_current_view_model, "position", Vector3.ZERO, 0.105)
+	_view_model_recoil_tween.tween_property(_current_view_model, "rotation_degrees", Vector3.ZERO, 0.105)
 
 func _spawn_flame_burst(visual_scale := 1.0) -> void:
 	if _view_model_root == null:

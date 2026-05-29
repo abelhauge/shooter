@@ -830,8 +830,481 @@ Efterfoelgende editor-refactor:
 - Den aktive validering maa ikke kraeve bestemte city placements, layer-populationer, traversal route names eller screenshot-kompositioner, fordi `arena_downtown_01_art.tscn` nu er den direkte editable scene og maa kunne ryddes og ombygges i Godot-editoren.
 - Validering skal fortsat kontrollere asset-katalog, editor-plugin, brug af `assets/third_party/quaternius/`, manglende asset paths, `source_packs`-forbud og ugyldige transforms paa de placements, der faktisk findes.
 
+## Local Network 1v1 Production Track
+
+Dette spor faerdiggoer lokal netvaerks-gameplay til minimum `1v1` med professionel, effektiv spilsynkronisering, character animation og movement-readability.
+
+Scope for dette spor:
+
+- kun lokal/LAN eller manuel IP via eksisterende `Godot ENet` listen-server
+- ingen offentlig relay, matchmaking backend, accounts eller dedicated server
+- minimum shipping target for sporet er `1v1`
+- `2v2` og `3v3` maa ikke regressere, men de er ikke exit-gate for dette spor medmindre en aendring beroerer shared network capacity
+- host er authoritative for match, spawn, health, damage, score, ammo, cooldown, reload, projectiles, status effects og respawn
+- klienten maa lave lokal prediction for egen movement og viewmodel feedback, men maa ikke afgore damage, kills, score eller authoritative resource state
+- remote player visuals skal vaere humanoide, animerede og team-readable, ikke capsule/box-only
+
+Codex goal-prompt for dette spor:
+
+```text
+Implementer fps-development-plan.md fra P24 og frem, fase for fase, og sørg for at exit-kriterier for hver fase er opfyldt, før du går videre. Målet er production-ready lokal 1v1 netværksgameplay med authoritative host-simulation, klient-prediction/reconciliation, interpolerede remote proxies og character animation for movement/combat.
+```
+
+### P24: Network Protocol Contract
+
+Status: `todo`
+
+Maal:
+
+- formalisere en production-ready lokal `1v1` protokol, saa implementationen ikke er spredte ad hoc RPC-kald
+- definere packet schemas, tick-rate, ownership, channels, sequence numbers, reconciliation og snapshot-indhold
+- opdatere teknisk dokumentation, saa den matcher den faktiske protokol, foer kode refactores
+
+Protokolkrav:
+
+- host simulerer authoritative state ved `60 Hz`
+- klient sender `InputCommand` ved `20 Hz` som minimum, med mulighed for lokalt at samle flere physics-frame inputs i samme command-batch
+- host sender `WorldSnapshot` ved `15 Hz` som minimum, plus immediate reliable events for spawn/death/match transitions
+- remote interpolation buffer er `100 ms` som baseline
+- input commands skal have:
+  - `protocol_version`
+  - `client_tick`
+  - `input_sequence`
+  - `client_time_msec`
+  - `move_x`
+  - `move_z`
+  - `jump_pressed`
+  - `jump_held`
+  - `slide_pressed`
+  - `fire_pressed`
+  - `fire_held`
+  - `alt_fire_pressed`
+  - `reload_pressed`
+  - `slot_select`
+  - `yaw`
+  - `pitch`
+- player snapshots skal have:
+  - `server_tick`
+  - `peer_id`
+  - `team_id`
+  - `position`
+  - `velocity`
+  - `yaw`
+  - `pitch`
+  - `movement_state`
+  - `movement_anim_state`
+  - `active_slot`
+  - `active_weapon_id`
+  - `health`
+  - `is_alive`
+  - `spawn_protection_remaining_sec`
+  - `stun_remaining_sec`
+  - `last_processed_input_sequence`
+- match snapshots skal have:
+  - `protocol_version`
+  - `server_tick`
+  - `snapshot_sequence`
+  - `match_phase`
+  - `remaining_time_sec`
+  - `blue_score`
+  - `orange_score`
+  - `players[]`
+  - `projectiles[]`
+  - `active_fx[]`
+  - `event_refs[]` for reliable events already emitted
+- weapon snapshots skal vaere per peer og indeholde:
+  - `active_slot`
+  - `weapon_id`
+  - `ammo_in_mag`
+  - `reserve_ammo`
+  - `charges_current`
+  - `cooldown_remaining_sec`
+  - `is_reloading`
+  - `reload_remaining_sec`
+- reliable RPC bruges til:
+  - lobby state
+  - ready/loadout confirm
+  - match start/end
+  - respawn
+  - death/kill feed event
+  - disconnect cleanup
+- unreliable RPC bruges til:
+  - input command batches
+  - world snapshots
+  - remote transform/animation snapshots
+- protokollen skal have `PROTOCOL_VERSION` i `scripts/network/network_constants.gd`
+- alle network dictionaries skal bygges via en central serializer/parser eller tydeligt navngivne builder-funktioner; nye felter maa ikke opfindes inline flere steder
+- ukendt eller forkert `protocol_version` skal afvises med en laesbar fejl i lobby/join-flow
+- store visuelle FX maa ikke sendes som tunge scene dumps; send kompakte event data og spawn lokalt
+- snapshots maa ikke indeholde Node paths, Resource objekter eller direkte scene-referencer
+
+Arbejde:
+
+- audit eksisterende `game_root.gd` network dictionaries, RPCs og verification helpers
+- opret/udvid network data scripts under `scripts/network/` for input command, player snapshot, weapon snapshot, world snapshot og network events
+- opdater `docs/fps-technical-spec.md` med den endelige lokale 1v1 protokol
+- opdater eller opret static validation for protocol constants, forbidden Node references i snapshots og required fields
+- skriv migration note i verification-dokumentet, der markerer hvilke gamle ad hoc fields der stadig findes, hvis refactoren ikke kan laves atomisk
+
+Exit-kriterier:
+
+- `docs/fps-technical-spec.md` beskriver den samme protokol som P24
+- `scripts/network/network_constants.gd` indeholder `PROTOCOL_VERSION`, tick-rate constants og interpolation constants
+- network snapshot/input schemas findes som kode eller tydeligt centraliserede builder/parser-funktioner
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py network` exit-kode `0`
+- verification note indeholder protokoloversigt, field list og kendte bevidste fravalg
+
+Bevis:
+
+- `docs/verification/playable-vertical-slice.md` har et `P24 Network Protocol Contract` afsnit
+- note lister exact testkommandoer og exit-koder
+- note forklarer hvordan protocol version mismatch haandteres
+
+Ikke accepteret:
+
+- at dokumentere en protokol uden at kodekonstanter/schemas matcher
+- at sprede nye snapshot fields som uvaliderede dictionaries uden samlet kontrakt
+- at aendre til anden transport end ENet i dette spor
+- at markere fasen `done` uden network smoke
+
+### P25: Authoritative Input Movement Simulation
+
+Status: `todo`
+
+Maal:
+
+- erstatte "client sender transform som sandhed" med host-authoritative input-command simulation for 1v1
+- bevare responsiv lokal movement via prediction, men lade hostens simulation vaere den endelige truth
+
+Arbejde:
+
+- tilfoej `PlayerInputCommand` dataflow fra klient til host
+- host skal simulere klientens movement ud fra input, movement config, yaw/pitch og status effects
+- lokal host-spiller skal bruge samme simulation path som remote klienter, saa host/client ikke divergerer
+- klienten maa stadig predicte egen movement lokalt for feel
+- host snapshot skal sende `last_processed_input_sequence`
+- klienten skal gemme input history nok til reconciliation
+- hvis stun/death/respawn er aktiv, skal host ignorere ugyldige movement commands og sende authoritative correction
+- fjern eller degrader transform-submit som authoritative kilde; transform maa kun bruges midlertidigt som debug fallback bag tydelig flag, hvis noedvendigt under migration
+
+Exit-kriterier:
+
+- 1v1 klient kan bevæge sig, hoppe, slide, slide-jumpe, wallrunne og wall-jumpe i en network match
+- hostens snapshot position er baseret paa input simulation, ikke blind trust af klient-transform
+- `last_processed_input_sequence` opdateres og modtages af klient
+- stun forhindrer klient movement paa host, og klient korrigeres hvis den predicter videre
+- death/respawn snapper klient til hostens respawn transform
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py network` exit-kode `0`
+
+Bevis:
+
+- verification note med 1v1 movement testlog
+- runtime report der viser input sequences, authoritative position og correction count
+- screenshot fra kørende host/client viewport hvor remote player er i arenaen efter movement
+
+Ikke accepteret:
+
+- at klientens transform alene bestemmer authoritative position
+- at springe wallrun/slide over, fordi almindelig gang virker
+- at movement kun testes headless
+
+### P26: Client Prediction And Reconciliation
+
+Status: `todo`
+
+Maal:
+
+- goere lokal 1v1 movement responsivt, stabilt og professionelt nok til FPS-playtest
+- reducere rubber-banding med kontrolleret prediction, replay og smoothing
+
+Arbejde:
+
+- implementer input history ringbuffer paa klienten
+- naar snapshot modtages for lokal spiller:
+  - find `last_processed_input_sequence`
+  - sammenlign host position med predicted position
+  - hvis fejl er under `0.35m`, smooth correction over `0.1s`
+  - hvis fejl er over `0.35m`, snap til host state og replay nyere inputs
+- tilfoej debug counters:
+  - correction count
+  - snap count
+  - average correction distance
+  - dropped/late snapshot count
+  - estimated RTT
+- undgaa at reconciliation flytter kameraet paa en kvalmende maade; camera/head bob maa smoothes separat fra collision body, hvis noedvendigt
+- ammo/health/death maa ikke predicteres som final truth; de maa vises lokalt, men host snapshot vinder
+
+Exit-kriterier:
+
+- 1v1 network match kan spilles i mindst `10` minutter lokalt uden voksende position divergence
+- almindelig movement foeles responsivt paa klienten
+- forced correction test udloeser smooth correction under threshold og snap over threshold
+- debug HUD eller runtime report viser correction metrics
+- ingen Godot `SCRIPT ERROR` eller kritiske `ERROR` under testen
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py network` exit-kode `0`
+
+Bevis:
+
+- verification note med 10 minutters 1v1 playtest og correction metrics
+- screenshot af HUD/debug metrics under network match
+- runtime report med max correction distance og snap count
+
+Ikke accepteret:
+
+- at skjule corrections uden metrics
+- at acceptere synlig konstant rubber-banding som "LAN ok"
+- at loese problemet ved at goere hosten ikke-authoritative
+
+### P27: Remote Snapshot Interpolation And Animation State
+
+Status: `todo`
+
+Maal:
+
+- goere remote players laesbare og stabile i 1v1 ved at interpolere snapshots og drive animation state fra movement/combat data
+
+Arbejde:
+
+- lav snapshot buffer per remote peer med server tick/time
+- interpoler remote position/yaw over buffer i stedet for kun at lerpe mod seneste target
+- extrapoler kun kortvarigt ved snapshot gap, og clamp hardt ved for lang silence
+- udvid remote state med `movement_anim_state`
+- map movement states til animation states:
+  - `idle`
+  - `walk`
+  - `run`
+  - `jump`
+  - `fall`
+  - `slide`
+  - `wallrun_left`
+  - `wallrun_right`
+  - `stunned`
+  - `dead`
+- remote weapon state skal kunne vise active weapon slot visuelt, mindst som korrekt orienteret simple proxy, indtil fulde third-person weapon attachments findes
+- animation state maa ikke kun udledes fra lokal client-side gæt, hvis host snapshot allerede angiver state
+
+Exit-kriterier:
+
+- remote player movement ser glat ud ved normal LAN 1v1
+- stop/start/jump/slide/wallrun skifter til laesbare animation states
+- remote dead/stunned state er visuelt tydelig
+- remote active slot/weapon er synlig eller dokumenteret som deliberate v1 proxy
+- screenshot/video-proof eller frame-serie viser mindst tre movement animation states i network match
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py network` exit-kode `0`
+
+Bevis:
+
+- `docs/verification/playable-vertical-slice.md` har et `P27 Remote Snapshot Interpolation And Animation State` afsnit
+- screenshots under `docs/verification/screenshots/p27_remote_animation/`
+- visual QA beskriver remote animation, interpolation og eventuelle remaining artifacts
+
+Ikke accepteret:
+
+- capsule/box-only remote representation
+- kun stillestaaende humanoid uden movement state
+- teleport/jitter ved almindelig LAN movement
+
+### P28: Character Animation Asset Pass
+
+Status: `todo`
+
+Maal:
+
+- sikre at character assets har en robust animation pipeline og ser rigtige ud i 1v1 movement
+
+Arbejde:
+
+- audit Quaternius Modular Men character assets for rig, skeleton og importerede animationer
+- hvis packen mangler alle noedvendige animationer, lav et dokumenteret fallback-set med simple Godot `AnimationPlayer`/procedural poses for v1
+- opret `player_avatar.tscn` eller tilsvarende wrapper, saa remote proxy ikke runtime-importerer GLTF ad hoc hver gang
+- wrapper skal indeholde:
+  - skeleton/mesh eller procedural fallback
+  - animation player/tree
+  - team material slots eller team marker attachment points
+  - weapon attachment point
+  - stable scale/orientation
+- implementer animation transitions for idle/run/jump/fall/slide/wallrun/stun/death
+- remote proxy skal instantiere wrapper-scene, ikke skjult raw GLTF import, naar wrapper findes
+- bevar asset provenance til `assets/third_party/quaternius/ultimate_modular_men_pack/`
+
+Exit-kriterier:
+
+- remote avatars bruger project-owned wrapper-scene
+- blue/orange team readability virker uden debugtekst
+- mindst `idle`, `run`, `jump/fall`, `slide`, `wallrun`, `stunned` og `dead` er visuelt adskillelige
+- avatar skala/rotation passer til player collision capsule
+- weapon proxy/attachment sidder plausibelt paa avataren
+- visual QA aabner screenshots og beskriver mindst `3` konkrete observationer pr. screenshot
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py network` exit-kode `0`
+
+Bevis:
+
+- wrapper scene path i verification note
+- asset manifest med kildeasset og animation strategy
+- screenshots:
+  - `docs/verification/screenshots/p28_avatar_idle_run.png`
+  - `docs/verification/screenshots/p28_avatar_slide_wallrun.png`
+  - `docs/verification/screenshots/p28_avatar_stun_death.png`
+
+Ikke accepteret:
+
+- raw GLTF import som eneste produktionsvej, hvis wrapper-scene findes
+- remote player der visuelt vender forkert eller har forkert skala
+- animation states der kun findes som tekst/debug label
+
+### P29: 1v1 Combat, Match State And Resource Sync
+
+Status: `todo`
+
+Maal:
+
+- sikre at 1v1 gameplay faktisk kan spilles som kamp, ikke kun som movement sync
+- haerde host-authoritative combat/resource state mod klient-divergence
+
+Arbejde:
+
+- test og ret host-authoritative damage for assault rifle, handgun, knife og smoke bomb i 1v1
+- extended weapons maa ikke regressere, men core v1 loadout er gate
+- reload, reload interrupt, slot change, ammo, charges og cooldown skal replikeres korrekt
+- score, death, respawn, spawn protection og match end skal replikeres korrekt
+- hit feedback maa gerne predicteres lokalt, men final hit/kill skal komme fra host
+- smoke volume skal spawn synces med duration/radius fra dataresource
+- disconnect cleanup skal fjerne remote proxy, player state, projectile/fx ownership og lobby peer state
+
+Exit-kriterier:
+
+- 1v1 host og client kan gennemfoere mindst `3` kill/death/respawn cycles
+- assault rifle og handgun hits registreres authoritative
+- knife hit eller eksplicit v1 melee blocker dokumenteres og rettes/markeres
+- smoke bomb ses paa begge peers med samme omtrentlige placering og radius
+- reload interrupt ved weapon switch virker i network match
+- score/timer/HUD matcher paa host og client efter combat events
+- disconnect/reconnect efter match efterlader ingen stale remote proxies
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py network` exit-kode `0`
+
+Bevis:
+
+- 1v1 combat playtest-log med varighed, kills, deaths, respawns og weapons used
+- screenshots:
+  - `docs/verification/screenshots/p29_1v1_combat_host.png`
+  - `docs/verification/screenshots/p29_1v1_combat_client.png`
+  - `docs/verification/screenshots/p29_1v1_smoke_sync.png`
+- runtime report med host/client score, health, ammo og disconnect cleanup
+
+Ikke accepteret:
+
+- kun headless combat check
+- score mismatch mellem host og client
+- client-side damage som final authority
+- smoke eller respawn kun synlig paa en peer
+
+### P30: Manual 1v1 Network Playtest And Visual QA
+
+Status: `todo`
+
+Maal:
+
+- godkende lokal 1v1 som en spilbar, visuel, professionel prototype med movement, combat, HUD, remote animation og disconnect cleanup
+
+Arbejde:
+
+- start to synlige Godot GUI-instanser via `./run.sh`
+- brug normal lobby-flow: Host Private Match, Join By IP, Ready, Host Start Match
+- spil mindst `20` minutter samlet 1v1 fra host og client perspektiv
+- test:
+  - spawn
+  - movement routes
+  - jump/slide/wallrun
+  - remote animation states
+  - assault rifle
+  - handgun
+  - knife
+  - smoke bomb
+  - reload interrupt
+  - death/respawn
+  - score/timer
+  - disconnect cleanup
+- tag screenshots fra begge game viewports
+- aabn screenshots bagefter og skriv konkrete visuelle observationer
+
+Exit-kriterier:
+
+- to synlige GUI-instanser deltager i samme 1v1 match
+- begge spillere ser den anden som animeret humanoid remote player
+- remote movement og animation laeser korrekt nok under combat
+- mindst `3` kills og respawns sker uden crash eller score mismatch
+- HUD er laesbar paa begge peers
+- no-fire, combat, smoke, animation og result/score screenshots findes
+- ingen accepteret screenshot viser camera inside geometry, usynligt weapon, capsule-only remote, debug label som team readability, forkert vendt avatar, uleselig HUD eller aabenlys animation blocker
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py all` exit-kode `0`
+
+Bevis:
+
+- `docs/verification/playable-vertical-slice.md` har et `P30 Manual 1v1 Network Playtest And Visual QA` afsnit
+- screenshots under `docs/verification/screenshots/p30_1v1_network_qa/`
+- note indeholder start/end eller varighed, host/client perspective, fund, rettelser og residual risk
+
+Ikke accepteret:
+
+- headless-only test
+- single-instance test
+- screenshots uden visuel vurdering
+- at kalde fasen done hvis remote animation eller combat sync er tydeligt forkert
+
+### P31: Local 1v1 Release Candidate Gate
+
+Status: `todo`
+
+Maal:
+
+- samle bevis og markere lokal 1v1 network gameplay som release-candidate for intern playtest
+
+Arbejde:
+
+- koer fuld regression
+- gennemgaa P24-P30 exit-kriterier
+- skriv samlet status, kendte bugs og no-go liste
+- dokumenter hvordan en tester starter host/client lokalt
+- dokumenter kendte netvaerksgraenser: LAN/manual IP, ingen relay, ingen matchmaking, host authority, ikke anti-cheat hardened
+
+Exit-kriterier:
+
+- P24-P30 er `done`
+- `python3 tools/validate_static.py` exit-kode `0`
+- `python3 tools/runtime_smoke.py all` exit-kode `0`
+- `./run.sh` virker for normal launch
+- `./run.sh --editor` bevarer editor-kontrakten og aabner `arena_downtown_01_art.tscn`
+- verification note har en klar `Local 1v1 Network RC` status
+- note indeholder tester-instruktioner for:
+  - host
+  - join
+  - ready/start
+  - controls
+  - expected screenshots/visual state
+  - known limitations
+
+Bevis:
+
+- `docs/verification/playable-vertical-slice.md` har et `P31 Local 1v1 Release Candidate Gate` afsnit
+- command outputs og exit-koder er listet
+- mindst et final host/client screenshot par findes
+
+Ikke accepteret:
+
+- at markere 1v1 RC uden P30 GUI-playtest
+- at skjule LAN/manual-IP begraensningen
+- at kalde det online/relay-ready
+- at springe editor-kontrakten over
+
 ## Naeste Fase
 
 Naeste fase er altid den foerste fase i dette dokument med status andet end `done`.
 
-Aktuelt: Ingen - `P00-P23` er `done`.
+Aktuelt: `P24: Network Protocol Contract`.

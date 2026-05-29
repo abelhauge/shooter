@@ -9,6 +9,7 @@ func _initialize() -> void:
 func _validate() -> void:
 	root.size = Vector2i(1280, 720)
 	var game := GAME_ROOT_SCENE.instantiate()
+	game.set_dev_balance_dummy_enabled(true)
 	root.add_child(game)
 	for _index in range(20):
 		await process_frame

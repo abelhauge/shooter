@@ -7,6 +7,7 @@ func _initialize() -> void:
 
 func _validate() -> void:
 	var game := GAME_ROOT_SCENE.instantiate()
+	game.set_dev_balance_dummy_enabled(true)
 	root.add_child(game)
 	for _index in range(18):
 		await physics_frame
