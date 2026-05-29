@@ -13,9 +13,9 @@ const TEAM_NAME_BY_ID := {
 	1: "blue",
 	2: "orange",
 }
-const REMOTE_WEAPON_PATH_BY_SLOT := {
-	&"primary": "res://assets/weapons/viewmodels/generated/rifle_from_fbx.glb",
-	&"secondary": "res://assets/weapons/viewmodels/generated/pistol_from_fbx.glb",
+const REMOTE_WEAPON_SCENE_BY_SLOT := {
+	&"primary": "res://scenes/weapons/viewmodels/rifle_viewmodel.tscn",
+	&"secondary": "res://scenes/weapons/viewmodels/handgun_viewmodel.tscn",
 }
 const AVATAR_YAW_CORRECTION_DEGREES := 180.0
 
@@ -58,8 +58,8 @@ func _ready() -> void:
 	add_child(_avatar_root)
 	_remote_weapon_root = Node3D.new()
 	_remote_weapon_root.name = "RemoteWeaponRoot"
-	_remote_weapon_root.position = Vector3(0.25, 1.18, -0.34)
-	_remote_weapon_root.rotation_degrees = Vector3(-8.0, 180.0, 0.0)
+	_remote_weapon_root.position = Vector3(0.28, 1.20, -0.34)
+	_remote_weapon_root.rotation_degrees = Vector3(-5.0, 0.0, -3.0)
 	_remote_weapon_root.scale = Vector3.ONE
 	add_child(_remote_weapon_root)
 	weapon_box.visible = false
@@ -159,17 +159,20 @@ func _refresh_remote_weapon() -> void:
 	_remote_weapon_source_path = ""
 	_remote_weapon_vertex_count = 0
 	weapon_box.visible = false
-	if _headless_visuals or not REMOTE_WEAPON_PATH_BY_SLOT.has(active_slot):
+	if _headless_visuals or not REMOTE_WEAPON_SCENE_BY_SLOT.has(active_slot):
 		return
-	var weapon := _load_gltf_scene(REMOTE_WEAPON_PATH_BY_SLOT[active_slot], "Remote weapon GLB import failed")
+	var weapon_scene := ResourceLoader.load(REMOTE_WEAPON_SCENE_BY_SLOT[active_slot], "PackedScene") as PackedScene
+	if weapon_scene == null:
+		return
+	var weapon := weapon_scene.instantiate() as Node3D
 	if weapon == null:
 		return
 	weapon.name = "RemoteWeapon_%s" % String(active_slot)
 	weapon.position = Vector3.ZERO
 	weapon.rotation_degrees = Vector3.ZERO
-	weapon.scale = Vector3(0.16, 0.16, 0.16) if active_slot == &"primary" else Vector3(0.055, 0.055, 0.055)
+	weapon.scale = Vector3.ONE
 	_remote_weapon_root.add_child(weapon)
-	_remote_weapon_source_path = REMOTE_WEAPON_PATH_BY_SLOT[active_slot]
+	_remote_weapon_source_path = REMOTE_WEAPON_SCENE_BY_SLOT[active_slot]
 	_remote_weapon_vertex_count = _count_mesh_vertices(weapon)
 
 func _load_gltf_scene(path: String, error_context: String) -> Node3D:
