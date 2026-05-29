@@ -2668,3 +2668,35 @@ Visual QA for `docs/verification/screenshots/remote_player_proxy_animation_state
 - The state capture shows distinct rig poses for idle, running and airborne fallback.
 - The running character is visibly using a legged run animation rather than a static idle pose.
 - The airborne fallback is visibly different from standing/running; it uses the available `Roll` clip until a better jump/fall asset is introduced.
+
+## Homemade Weapon Asset Replacement
+
+Date: 2026-05-29
+
+- Replaced the remaining procedural weapon viewmodels with curated free assets.
+- Quaternius Sci-Fi Modular Gun Pack now backs flamethrower, lasso, taser gun, portal gun, grenade and smoke bomb visuals.
+- Kenney Food Kit now backs the knife and Redbull/energy-can visuals.
+- Grenade and smoke bomb projectiles use the same Quaternius hand-grenade asset instead of a built-in sphere mesh.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -- --verification-capture=p05a
+VERIFICATION_CAPTURE_PASS p05a
+EXIT=0
+```
+
+Visual QA for `docs/verification/screenshots/weapon_visual_qa/`:
+
+- All 12 captured weapon viewmodels report asset-backed meshes with vertex counts and no fallback viewmodel.
+- The new grenade/smoke captures show a handheld grenade-shaped asset instead of the previous sphere/launcher mismatch.
+- Flamethrower, lasso, taser gun and portal gun are visible in the lower-right weapon area without covering the crosshair or HUD panels.
+- Knife and Redbull are visible as external Kenney assets rather than project-owned procedural geometry.

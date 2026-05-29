@@ -1,12 +1,17 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+[ext_resource type="Script" path="res://scripts/weapons/gltf_viewmodel_loader.gd" id="1_gltf_viewmodel_loader"]
 
 [node name="KnifeViewModel" type="Node3D"]
-script = ExtResource("1_procedural_viewmodel")
-weapon_id = &"knife"
+script = ExtResource("1_gltf_viewmodel_loader")
+source_fbx_path = "res://assets/third_party/kenney/food_kit/glb/cooking-knife.glb"
+generated_glb_path = "res://assets/third_party/kenney/food_kit/glb/cooking-knife.glb"
 viewmodel_kind = "knife"
-placeholder_note = "Deliberate v1 knife placeholder because the local Quaternius baseline has no knife asset."
-model_position = Vector3(0.20, -0.16, -0.44)
-model_rotation_degrees = Vector3(-8, -16, -12)
-model_scale = Vector3(1.05, 1.05, 1.05)
+asset_pack = "Kenney Food Kit"
+model_position = Vector3(0.34, -0.28, -0.22)
+model_rotation_degrees = Vector3(-14, -32, -24)
+model_scale = Vector3(1.9, 1.9, 1.9)
+apply_material_override = true
+material_color = Color(0.64, 0.68, 0.72, 1)
+material_metallic = 0.34
+material_roughness = 0.38

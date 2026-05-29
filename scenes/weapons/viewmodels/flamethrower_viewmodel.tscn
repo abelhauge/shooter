@@ -1,12 +1,18 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+[ext_resource type="Script" path="res://scripts/weapons/gltf_viewmodel_loader.gd" id="1_gltf_viewmodel_loader"]
 
 [node name="FlamethrowerViewModel" type="Node3D"]
-script = ExtResource("1_procedural_viewmodel")
-weapon_id = &"flamethrower"
+script = ExtResource("1_gltf_viewmodel_loader")
+source_fbx_path = "res://assets/third_party/quaternius/scifi_modular_gun_pack/gltf/SMG_2.gltf"
+generated_glb_path = "res://assets/third_party/quaternius/scifi_modular_gun_pack/gltf/SMG_2.gltf"
 viewmodel_kind = "flamethrower"
-placeholder_note = "Deliberate v1 flamethrower placeholder because the local Quaternius baseline has no flamethrower asset."
-model_position = Vector3(0.22, -0.13, -0.40)
-model_rotation_degrees = Vector3(-3, -12, 0)
-model_scale = Vector3(1.05, 1.05, 1.05)
+asset_pack = "Quaternius Sci-Fi Modular Gun Pack"
+model_position = Vector3(0.38, -0.28, -0.22)
+model_rotation_degrees = Vector3(-4, 160, 0)
+model_scale = Vector3(0.65, 0.65, 0.65)
+apply_material_override = true
+material_color = Color(0.48, 0.52, 0.56, 1)
+material_metallic = 0.22
+material_roughness = 0.46
+use_named_material_palette = false

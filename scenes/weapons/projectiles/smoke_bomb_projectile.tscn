@@ -1,17 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/weapons/smoke_bomb_projectile.gd" id="1_smoke_bomb_projectile"]
+[ext_resource type="Script" path="res://scripts/weapons/gltf_viewmodel_loader.gd" id="2_gltf_viewmodel_loader"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_projectile"]
 radius = 0.18
-
-[sub_resource type="SphereMesh" id="SphereMesh_projectile"]
-radius = 0.18
-height = 0.36
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_projectile"]
-albedo_color = Color(0.12, 0.15, 0.14, 1)
-roughness = 0.9
 
 [node name="SmokeBombProjectile" type="Area3D"]
 script = ExtResource("1_smoke_bomb_projectile")
@@ -19,6 +12,17 @@ script = ExtResource("1_smoke_bomb_projectile")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("SphereShape3D_projectile")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = SubResource("SphereMesh_projectile")
-material_override = SubResource("StandardMaterial3D_projectile")
+[node name="ProjectileVisual" type="Node3D" parent="."]
+script = ExtResource("2_gltf_viewmodel_loader")
+source_fbx_path = "res://assets/third_party/quaternius/scifi_modular_gun_pack/gltf/Grenade.gltf"
+generated_glb_path = "res://assets/third_party/quaternius/scifi_modular_gun_pack/gltf/Grenade.gltf"
+viewmodel_kind = "smoke_bomb_projectile"
+asset_pack = "Quaternius Sci-Fi Modular Gun Pack"
+model_position = Vector3(0, -0.10, 0)
+model_rotation_degrees = Vector3(0, 0, 0)
+model_scale = Vector3(0.9, 0.9, 0.9)
+apply_material_override = true
+material_color = Color(0.16, 0.18, 0.19, 1)
+material_metallic = 0.12
+material_roughness = 0.60
+use_named_material_palette = false

@@ -1118,7 +1118,6 @@ func run_p14_grenade_checks() -> Dictionary:
 		and not bool(view_model.get("is_fallback", true))
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
-		and String(view_summary.get("placeholder_type", "")) == "deliberate_v1"
 		and String(view_summary.get("viewmodel_kind", "")) == "grenade"
 		and bool(view_summary.get("material_override", false))
 	)
@@ -1327,7 +1326,6 @@ func run_p14_flamethrower_checks() -> Dictionary:
 		and not bool(view_model.get("is_fallback", true))
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
-		and String(view_summary.get("placeholder_type", "")) == "deliberate_v1"
 		and String(view_summary.get("viewmodel_kind", "")) == "flamethrower"
 		and bool(view_summary.get("material_override", false))
 	)
@@ -1560,7 +1558,6 @@ func run_p14_lasso_checks() -> Dictionary:
 		and not bool(view_model.get("is_fallback", true))
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
-		and String(view_summary.get("placeholder_type", "")) == "deliberate_v1"
 		and String(view_summary.get("viewmodel_kind", "")) == "lasso"
 		and bool(view_summary.get("material_override", false))
 	)
@@ -1903,7 +1900,6 @@ func run_p14_redbull_checks() -> Dictionary:
 		and not bool(view_model.get("is_fallback", true))
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
-		and String(view_summary.get("placeholder_type", "")) == "deliberate_v1"
 		and String(view_summary.get("viewmodel_kind", "")) == "redbull"
 		and bool(view_summary.get("material_override", false))
 	)
@@ -2137,7 +2133,6 @@ func run_p14_portal_gun_checks() -> Dictionary:
 		and not bool(view_model.get("is_fallback", true))
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
-		and String(view_summary.get("placeholder_type", "")) == "deliberate_v1"
 		and String(view_summary.get("viewmodel_kind", "")) == "portal_gun"
 		and bool(view_summary.get("material_override", false))
 	)

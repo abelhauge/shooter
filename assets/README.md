@@ -18,6 +18,20 @@ Dette projekt holder kun import-klare/runtime-noedvendige assets i git. Raa vend
 
 - Vaaben:
   - `assets/third_party/quaternius/animated_guns_pack/FBX`
+  - `assets/third_party/quaternius/scifi_modular_gun_pack/gltf`
+  - `assets/third_party/kenney/food_kit/glb`
+
+## Kuraterede ekstra packs pr. 2026-05-29
+
+- `Quaternius Sci-Fi Modular Gun Pack`
+  - kilde: `https://quaternius.com/packs/scifimodularguns.html`
+  - license: `CC0`
+  - brugt til de tidligere hjemmelavede sci-fi/throwable viewmodels
+
+- `Kenney Food Kit`
+  - kilde: `https://kenney.nl/assets/food-kit`
+  - license: `Creative Commons CC0`
+  - brugt til energy can og knife, hvor den lokale Quaternius-baseline ikke havde gode replacements
 
 ## Agentregler
 

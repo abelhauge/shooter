@@ -30,13 +30,13 @@ const VIEW_MODEL_PATHS := {
 	&"shotgun": "res://scenes/weapons/viewmodels/shotgun_viewmodel.tscn",
 	&"sniper": "res://scenes/weapons/viewmodels/sniper_viewmodel.tscn",
 	&"flamethrower": "res://scenes/weapons/viewmodels/flamethrower_viewmodel.tscn",
-	&"lasso": "res://scenes/weapons/viewmodels/revolver_viewmodel.tscn",
+	&"lasso": "res://scenes/weapons/viewmodels/lasso_viewmodel.tscn",
 	&"taser_gun": "res://scenes/weapons/viewmodels/taser_gun_viewmodel.tscn",
 	&"knife": "res://scenes/weapons/viewmodels/knife_viewmodel.tscn",
 	&"smoke_bomb": "res://scenes/weapons/viewmodels/smoke_bomb_viewmodel.tscn",
 	&"grenade": "res://scenes/weapons/viewmodels/grenade_viewmodel.tscn",
 	&"redbull": "res://scenes/weapons/viewmodels/redbull_viewmodel.tscn",
-	&"portal_gun": "res://scenes/weapons/viewmodels/p90_viewmodel.tscn",
+	&"portal_gun": "res://scenes/weapons/viewmodels/portal_gun_viewmodel.tscn",
 }
 
 @export var loadout: LoadoutDefinition = preload("res://data/loadouts/default_v1_loadout.tres")

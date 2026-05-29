@@ -3,6 +3,8 @@ extends Node3D
 
 @export var source_fbx_path := ""
 @export var generated_glb_path := ""
+@export var viewmodel_kind := ""
+@export var asset_pack := ""
 @export var model_position := Vector3.ZERO
 @export var model_rotation_degrees := Vector3.ZERO
 @export var model_scale := Vector3.ONE
@@ -18,9 +20,9 @@ var vertex_count := 0
 func _ready() -> void:
 	model_root = _load_glb_scene(generated_glb_path)
 	if model_root == null:
-		push_error("Could not load generated GLB viewmodel: %s" % generated_glb_path)
+		push_error("Could not load GLTF/GLB viewmodel: %s" % generated_glb_path)
 		return
-	model_root.name = "GeneratedGlbModel"
+	model_root.name = "ImportedAssetModel"
 	model_root.position = model_position
 	model_root.rotation_degrees = model_rotation_degrees
 	model_root.scale = model_scale
@@ -33,6 +35,9 @@ func get_runtime_summary() -> Dictionary:
 	return {
 		"source_fbx_path": source_fbx_path,
 		"generated_glb_path": generated_glb_path,
+		"source_asset_path": generated_glb_path,
+		"viewmodel_kind": viewmodel_kind,
+		"asset_pack": asset_pack,
 		"has_mesh": model_root != null and vertex_count > 0,
 		"vertex_count": vertex_count,
 		"material_override": apply_material_override,

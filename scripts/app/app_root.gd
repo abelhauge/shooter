@@ -12,11 +12,25 @@ const P05A_WEAPON_CAPTURE_ORDER := [
 	&"grenade",
 	&"flamethrower",
 	&"lasso",
+	&"taser_gun",
 	&"redbull",
 	&"portal_gun",
 ]
 const P05A_FEEDBACK_CAPTURE_WEAPONS := [&"assault_rifle", &"handgun", &"shotgun"]
-const P05A_ASSET_BACKED_WEAPONS := [&"assault_rifle", &"handgun", &"shotgun", &"sniper", &"lasso", &"portal_gun"]
+const P05A_ASSET_BACKED_WEAPONS := [
+	&"assault_rifle",
+	&"handgun",
+	&"shotgun",
+	&"sniper",
+	&"knife",
+	&"smoke_bomb",
+	&"grenade",
+	&"flamethrower",
+	&"lasso",
+	&"taser_gun",
+	&"redbull",
+	&"portal_gun",
+]
 const P10A_OFFLINE_SCREENSHOTS := [
 	{"view": "blue_spawn", "file": "blue_spawn"},
 	{"view": "orange_spawn", "file": "orange_spawn"},
@@ -671,8 +685,8 @@ func _validate_p05a_capture_result(result: Dictionary, weapon_id: StringName, re
 			get_tree().quit(1)
 			return false
 	else:
-		if String(summary.get("placeholder_type", "")) != "deliberate_v1":
-			printerr("VERIFICATION_CAPTURE_FAIL p05a %s expected deliberate v1 placeholder summary: %s" % [String(weapon_id), str(summary)])
+		if String(summary.get("source_asset_path", "")) == "":
+			printerr("VERIFICATION_CAPTURE_FAIL p05a %s expected asset-backed viewmodel summary: %s" % [String(weapon_id), str(summary)])
 			get_tree().quit(1)
 			return false
 	if require_fire:

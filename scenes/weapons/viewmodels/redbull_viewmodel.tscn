@@ -1,11 +1,17 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+[ext_resource type="Script" path="res://scripts/weapons/gltf_viewmodel_loader.gd" id="1_gltf_viewmodel_loader"]
 
 [node name="RedbullViewModel" type="Node3D"]
-script = ExtResource("1_procedural_viewmodel")
-weapon_id = &"redbull"
+script = ExtResource("1_gltf_viewmodel_loader")
+source_fbx_path = "res://assets/third_party/kenney/food_kit/glb/soda-can.glb"
+generated_glb_path = "res://assets/third_party/kenney/food_kit/glb/soda-can.glb"
 viewmodel_kind = "redbull"
-placeholder_note = "Deliberate v1 energy-can placeholder because the local Quaternius baseline has no Redbull asset."
-model_position = Vector3(0.18, -0.13, -0.42)
-model_rotation_degrees = Vector3(-12, -18, 0)
+asset_pack = "Kenney Food Kit"
+model_position = Vector3(0.32, -0.25, -0.25)
+model_rotation_degrees = Vector3(-10, -18, 0)
+model_scale = Vector3(1.6, 1.6, 1.6)
+apply_material_override = true
+material_color = Color(0.12, 0.26, 0.82, 1)
+material_metallic = 0.16
+material_roughness = 0.42
