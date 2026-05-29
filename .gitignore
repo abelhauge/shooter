@@ -1,0 +1,28 @@
+.DS_Store
+.bin/
+.codex/
+.godot/
+
+# Godot import/cache output. These are regenerated locally.
+*.import
+
+# Verification screenshots are generated locally and should not be pushed.
+docs/verification/screenshots/*
+!docs/verification/screenshots/.gitkeep
+
+# Local vendor archives and unused raw asset formats should not be pushed.
+assets/source_packs/
+assets/third_party/quaternius/**/Blends/
+assets/third_party/quaternius/**/Blend/
+assets/third_party/quaternius/**/OBJ/
+assets/third_party/quaternius/animated_guns_pack/Preview.mp4
+assets/third_party/quaternius/downtown_city_megakit/Preview_*.jpg
+assets/third_party/quaternius/downtown_city_megakit/Textures/
+assets/third_party/quaternius/downtown_city_megakit/Exports/FBX (Unity)/
+assets/third_party/quaternius/downtown_city_megakit/Exports/FBX (Unreal Engine)/
+assets/third_party/quaternius/ultimate_modular_men_pack/**/FBX/
+assets/third_party/quaternius/ultimate_modular_men_pack/All together/
+assets/third_party/quaternius/ultimate_modular_men_pack/Humanoid Rig/
+assets/third_party/quaternius/ultimate_modular_men_pack/Separate Skeletal Meshes and Animations/
+assets/third_party/quaternius/ultimate_modular_men_pack/**/Blends/
+assets/third_party/quaternius/ultimate_modular_men_pack/**/Blend/

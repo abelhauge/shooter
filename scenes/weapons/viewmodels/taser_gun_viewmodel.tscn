@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+
+[node name="TaserGunViewModel" type="Node3D"]
+script = ExtResource("1_procedural_viewmodel")
+weapon_id = &"taser_gun"
+viewmodel_kind = "taser_gun"
+placeholder_note = "Deliberate v1 taser gun placeholder because the local Quaternius baseline has no taser asset."
+model_position = Vector3(0.2, -0.15, -0.42)
+model_rotation_degrees = Vector3(-7, -15, 0)
+primary_color = Color(0.11, 0.13, 0.16, 1)
+accent_color = Color(0.12, 0.78, 1, 1)

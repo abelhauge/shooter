@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/smoke_volume.gd" id="1_smoke_volume"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_smoke"]
+radius = 4.0
+height = 8.0
+radial_segments = 24
+rings = 12
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_smoke"]
+transparency = 1
+albedo_color = Color(0.30, 0.36, 0.38, 0.76)
+roughness = 1.0
+
+[node name="SmokeVolume" type="Node3D"]
+script = ExtResource("1_smoke_volume")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_smoke")
+material_override = SubResource("StandardMaterial3D_smoke")

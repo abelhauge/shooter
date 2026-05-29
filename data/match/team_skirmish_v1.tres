@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="MatchRulesDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/match_rules.gd" id="1_match_rules"]
+
+[resource]
+script = ExtResource("1_match_rules")
+mode_id = &"team_skirmish"
+team_count = 2
+players_per_team = 3
+respawn_delay_sec = 3.0
+spawn_protection_sec = 1.0
+time_limit_sec = 480.0
+score_limit = 20
+friendly_fire = false
+allow_join_mid_match = false
+allow_spectators = false
+allow_loadout_changes_mid_match = false

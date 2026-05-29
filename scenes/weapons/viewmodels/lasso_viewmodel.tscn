@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+
+[node name="LassoViewModel" type="Node3D"]
+script = ExtResource("1_procedural_viewmodel")
+weapon_id = &"lasso"
+viewmodel_kind = "lasso"
+placeholder_note = "Deliberate v1 lasso placeholder because the local Quaternius baseline has no lasso asset."
+model_position = Vector3(0.18, -0.13, -0.40)
+model_rotation_degrees = Vector3(-12, -16, 0)

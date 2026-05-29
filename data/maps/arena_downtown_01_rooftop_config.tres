@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="RooftopMapConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/maps/rooftop_map_config.gd" id="1_rooftop_map_config"]
+
+[resource]
+script = ExtResource("1_rooftop_map_config")
+ground_kill_height_y = 0.25
+void_kill_height_y = -8.0
+fog_surface_y = 0.7
+fog_color = Color(0.46, 0.57, 0.6, 1)
+fog_alpha = 0.95
+fog_visual_size = Vector2(220, 180)
+fog_layer_count = 8
+fog_layer_spacing = 0.34
+fog_visual_center_y = 0.35
+fog_visual_layer_alpha = 0.32
+fog_visual_top_fade_alpha = 0.10
+environment_fog_density = 0.005
+environment_fog_height_density = 10.0
+rooftop_spawn_clearance = 1.25
+rooftop_spawn_min_y = 6.0
+lethal_damage = 1000.0

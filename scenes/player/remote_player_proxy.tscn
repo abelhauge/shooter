@@ -1,0 +1,36 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/player/remote_player_proxy.gd" id="1_remote_player_proxy"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_proxy"]
+radius = 0.35
+height = 1.8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_proxy"]
+albedo_color = Color(0.20, 0.55, 0.95, 1)
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_weapon"]
+size = Vector3(0.18, 0.12, 0.72)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_weapon"]
+albedo_color = Color(0.08, 0.09, 0.10, 1)
+roughness = 0.75
+
+[node name="RemotePlayerProxy" type="Node3D"]
+script = ExtResource("1_remote_player_proxy")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.9, 0)
+mesh = SubResource("CapsuleMesh_proxy")
+material_override = SubResource("StandardMaterial3D_proxy")
+
+[node name="WeaponBox" type="MeshInstance3D" parent="."]
+position = Vector3(0.32, 1.25, -0.35)
+mesh = SubResource("BoxMesh_weapon")
+material_override = SubResource("StandardMaterial3D_weapon")
+
+[node name="Label3D" type="Label3D" parent="."]
+position = Vector3(0, 2.2, 0)
+pixel_size = 0.004
+billboard = 1

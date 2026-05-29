@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+
+[node name="RedbullViewModel" type="Node3D"]
+script = ExtResource("1_procedural_viewmodel")
+weapon_id = &"redbull"
+viewmodel_kind = "redbull"
+placeholder_note = "Deliberate v1 energy-can placeholder because the local Quaternius baseline has no Redbull asset."
+model_position = Vector3(0.18, -0.13, -0.42)
+model_rotation_degrees = Vector3(-12, -18, 0)

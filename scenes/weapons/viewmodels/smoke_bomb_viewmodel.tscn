@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+
+[node name="SmokeBombViewModel" type="Node3D"]
+script = ExtResource("1_procedural_viewmodel")
+weapon_id = &"smoke_bomb"
+viewmodel_kind = "smoke_bomb"
+placeholder_note = "Deliberate v1 smoke bomb placeholder because the local Quaternius baseline has no throwable smoke asset."
+model_position = Vector3(0.18, -0.14, -0.42)
+model_rotation_degrees = Vector3(-12, -18, 0)

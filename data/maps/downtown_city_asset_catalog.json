@@ -1,0 +1,238 @@
+{
+  "catalog_id": "downtown_city_megakit_p23",
+  "source_root": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/",
+  "entries": [
+    {
+      "asset_id": "building_large_2",
+      "display_name": "Large Brick Tower",
+      "category": "building",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Large_2.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "building_medium_2_001",
+      "display_name": "Medium Corner Building",
+      "category": "building",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Medium_2_001.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "building_small_1",
+      "display_name": "Small Brick Building",
+      "category": "building",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Small_1.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "brick_inset_window",
+      "display_name": "Brick Inset Window",
+      "category": "facade",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Brick_Inset_Window.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "brick_window_curved_double",
+      "display_name": "Curved Double Window",
+      "category": "facade",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Brick_Window_CurvedDouble.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "brick_redwhite_double_window",
+      "display_name": "Red White Double Window",
+      "category": "facade",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Brick_RedWhite_DoubleWindow.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "metal_firstfloor_window",
+      "display_name": "Metal First Floor Window",
+      "category": "facade",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Metal_FirstFloor_Window.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "trim_firstfloor_window_columns",
+      "display_name": "Trim Window Columns",
+      "category": "facade",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Trim_FirstFloor_Window_Columns.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "street_4lane",
+      "display_name": "Street 4 Lane",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Street_4Lane.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 90.0, 0.0]
+    },
+    {
+      "asset_id": "street_2lane",
+      "display_name": "Street 2 Lane",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Street_2Lane.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 90.0, 0.0]
+    },
+    {
+      "asset_id": "street_4way_intersection",
+      "display_name": "Street 4 Way Intersection",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Street_4WayIntersection.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 45.0, 0.0]
+    },
+    {
+      "asset_id": "street_asphalt_9x9",
+      "display_name": "Asphalt 9x9",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Street_Asphalt_9x9.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "sidewalk_straight_3m",
+      "display_name": "Sidewalk Straight 3m",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Sidewalk_Straight_3m.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "sidewalk_corner_flat_3m",
+      "display_name": "Sidewalk Flat Corner",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Sidewalk_Corner_Flat_3m.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "trim_wall_guard",
+      "display_name": "Wall Guard Trim",
+      "category": "trim",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Trim_Wall_Guard.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "brick_top_trim",
+      "display_name": "Brick Top Trim",
+      "category": "trim",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Brick_TopTrim.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "cornice_metal_center",
+      "display_name": "Metal Cornice Center",
+      "category": "trim",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Cornice_Metal_Center.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "roof_4x4",
+      "display_name": "Roof 4x4",
+      "category": "trim",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Roof_4x4.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "prop_ac_unit",
+      "display_name": "AC Unit",
+      "category": "prop",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Prop_ACUnit.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "prop_bollard",
+      "display_name": "Bollard",
+      "category": "prop",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Prop_Bollard.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "prop_manhole_cover",
+      "display_name": "Manhole Cover",
+      "category": "prop",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Prop_ManholeCover.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "prop_planter_single",
+      "display_name": "Single Planter",
+      "category": "prop",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Prop_Planter_Single.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "stairs_rails_metal",
+      "display_name": "Metal Rail Stairs",
+      "category": "landmark",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Stairs_Rails_Metal.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "decal_crosswalk_wide",
+      "display_name": "Wide Crosswalk Decal",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Decal_Crosswalk_Wide.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "decal_stop",
+      "display_name": "Stop Decal",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Decal_Stop.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "decal_double_yellow_straight",
+      "display_name": "Double Yellow Decal",
+      "category": "street",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Decal_DoubleYellow_Straight.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 90.0, 0.0]
+    },
+    {
+      "asset_id": "backdrop_brick_plain_3",
+      "display_name": "Brick Backdrop Panel",
+      "category": "backdrop",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Brick_Plain_3.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "backdrop_metal_plain_3",
+      "display_name": "Metal Backdrop Panel",
+      "category": "backdrop",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Metal_Plain_3.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    },
+    {
+      "asset_id": "landmark_entrance_concrete_2x2",
+      "display_name": "Concrete Entrance Landmark",
+      "category": "landmark",
+      "source_path": "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Entrance_Concrete_2x2.gltf",
+      "default_scale": [1.0, 1.0, 1.0],
+      "default_rotation_degrees": [0.0, 0.0, 0.0]
+    }
+  ]
+}

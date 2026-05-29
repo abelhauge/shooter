@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_definition.gd" id="1_weapon_definition"]
+
+[resource]
+script = ExtResource("1_weapon_definition")
+weapon_id = &"handgun"
+slot_type = &"secondary"
+display_name = "Handgun"
+fire_mode = &"semi"
+is_hitscan = true
+uses_projectile = false
+supports_hold_fire = false
+magazine_size = 13
+reserve_ammo_max = 39
+reload_time_sec = 2.6
+shot_cooldown_sec = 0.22
+pellets_per_shot = 1
+body_damage = 16.0
+head_damage = 24.0
+spread_degrees = 0.7
+max_range_m = 90.0
+projectile_scene_path = ""
+projectile_speed_mps = 0.0
+projectile_gravity_scale = 1.0
+charges_max = 0
+effect_duration_sec = 0.0
+effect_radius_m = 0.0
+alt_action_type = &""
+move_speed_multiplier = 1.0
+propulsion_force = 0.0

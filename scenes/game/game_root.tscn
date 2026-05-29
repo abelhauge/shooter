@@ -1,0 +1,47 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/game/game_root.gd" id="1_game_root"]
+[ext_resource type="Script" path="res://scripts/game/match_director.gd" id="2_match_director"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_game"]
+sky_top_color = Color(0.06, 0.09, 0.14, 1)
+sky_horizon_color = Color(0.38, 0.45, 0.52, 1)
+ground_bottom_color = Color(0.03, 0.03, 0.035, 1)
+ground_horizon_color = Color(0.30, 0.31, 0.32, 1)
+
+[sub_resource type="Sky" id="Sky_game"]
+sky_material = SubResource("ProceduralSkyMaterial_game")
+
+[sub_resource type="Environment" id="Environment_game"]
+background_mode = 1
+background_color = Color(0.10, 0.12, 0.14, 1)
+sky = SubResource("Sky_game")
+ambient_light_source = 2
+ambient_light_color = Color(0.72, 0.78, 0.86, 1)
+ambient_light_energy = 0.68
+tonemap_mode = 2
+glow_enabled = true
+
+[node name="GameRoot" type="Node3D"]
+script = ExtResource("1_game_root")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_game")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, -0.353553, 0.612372, 0, 0.866025, 0.5, -0.707107, -0.353553, 0.612372, 0, 14, 0)
+light_energy = 2.2
+shadow_enabled = true
+
+[node name="MapRoot" type="Node3D" parent="."]
+
+[node name="SpawnPoints" type="Node3D" parent="."]
+
+[node name="PlayersRoot" type="Node3D" parent="."]
+
+[node name="ProjectilesRoot" type="Node3D" parent="."]
+
+[node name="EffectsRoot" type="Node3D" parent="."]
+
+[node name="MatchDirector" type="Node" parent="."]
+script = ExtResource("2_match_director")

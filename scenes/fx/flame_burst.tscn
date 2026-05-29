@@ -1,0 +1,53 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/flame_burst.gd" id="1_flame_burst"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_flame_core"]
+radius = 0.18
+height = 0.36
+radial_segments = 18
+rings = 8
+
+[sub_resource type="SphereMesh" id="SphereMesh_flame_mid"]
+radius = 0.24
+height = 0.48
+radial_segments = 18
+rings = 8
+
+[sub_resource type="SphereMesh" id="SphereMesh_flame_tip"]
+radius = 0.15
+height = 0.30
+radial_segments = 14
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flame_core"]
+transparency = 1
+albedo_color = Color(1, 0.86, 0.18, 0.88)
+emission_enabled = true
+emission = Color(1, 0.62, 0.08, 1)
+emission_energy_multiplier = 4.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flame_edge"]
+transparency = 1
+albedo_color = Color(1, 0.22, 0.04, 0.62)
+emission_enabled = true
+emission = Color(1, 0.20, 0.02, 1)
+emission_energy_multiplier = 2.3
+
+[node name="FlameBurst" type="Node3D"]
+script = ExtResource("1_flame_burst")
+
+[node name="Core" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0, -0.32)
+mesh = SubResource("SphereMesh_flame_core")
+material_override = SubResource("StandardMaterial3D_flame_core")
+
+[node name="Mid" type="MeshInstance3D" parent="."]
+position = Vector3(0.04, 0.01, -0.58)
+mesh = SubResource("SphereMesh_flame_mid")
+material_override = SubResource("StandardMaterial3D_flame_edge")
+
+[node name="Tip" type="MeshInstance3D" parent="."]
+position = Vector3(-0.03, 0.02, -0.88)
+mesh = SubResource("SphereMesh_flame_tip")
+material_override = SubResource("StandardMaterial3D_flame_core")

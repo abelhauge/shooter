@@ -1,0 +1,20 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/impact_spark.gd" id="1_impact_spark"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_impact"]
+radius = 0.22
+height = 0.44
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_impact"]
+albedo_color = Color(1, 0.68, 0.26, 1)
+emission_enabled = true
+emission = Color(1, 0.48, 0.1, 1)
+emission_energy_multiplier = 1.5
+
+[node name="ImpactSpark" type="Node3D"]
+script = ExtResource("1_impact_spark")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_impact")
+material_override = SubResource("StandardMaterial3D_impact")

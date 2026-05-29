@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_definition.gd" id="1_weapon_definition"]
+
+[resource]
+script = ExtResource("1_weapon_definition")
+weapon_id = &"portal_gun"
+slot_type = &"secondary"
+display_name = "Portal Gun"
+fire_mode = &"portal"
+is_hitscan = true
+uses_projectile = false
+supports_hold_fire = false
+magazine_size = 2
+reserve_ammo_max = 0
+reload_time_sec = 0.0
+shot_cooldown_sec = 0.35
+pellets_per_shot = 1
+body_damage = 0.0
+head_damage = 0.0
+spread_degrees = 0.0
+max_range_m = 80.0
+projectile_scene_path = ""
+projectile_speed_mps = 0.0
+projectile_gravity_scale = 1.0
+charges_max = 0
+effect_duration_sec = 60.0
+effect_radius_m = 1.1
+alt_action_type = &"portal"
+move_speed_multiplier = 1.0
+propulsion_force = 0.0

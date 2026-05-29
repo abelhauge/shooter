@@ -1,0 +1,15 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/gltf_viewmodel_loader.gd" id="1_gltf_viewmodel_loader"]
+
+[node name="ShotgunViewModel" type="Node3D"]
+script = ExtResource("1_gltf_viewmodel_loader")
+source_fbx_path = "res://assets/third_party/quaternius/animated_guns_pack/FBX/Shotgun.fbx"
+generated_glb_path = "res://assets/weapons/viewmodels/generated/shotgun_from_fbx.glb"
+model_position = Vector3(0.28, -0.28, -0.22)
+model_rotation_degrees = Vector3(0, 12, -3)
+model_scale = Vector3(0.16, 0.16, 0.16)
+apply_material_override = true
+material_color = Color(0.24, 0.26, 0.28, 1)
+material_metallic = 0.18
+material_roughness = 0.46

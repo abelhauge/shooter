@@ -1,0 +1,12 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+
+[node name="KnifeViewModel" type="Node3D"]
+script = ExtResource("1_procedural_viewmodel")
+weapon_id = &"knife"
+viewmodel_kind = "knife"
+placeholder_note = "Deliberate v1 knife placeholder because the local Quaternius baseline has no knife asset."
+model_position = Vector3(0.20, -0.16, -0.44)
+model_rotation_degrees = Vector3(-8, -16, -12)
+model_scale = Vector3(1.05, 1.05, 1.05)

@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_definition.gd" id="1_weapon_definition"]
+
+[resource]
+script = ExtResource("1_weapon_definition")
+weapon_id = &"assault_rifle"
+slot_type = &"primary"
+display_name = "Assault Rifle"
+fire_mode = &"auto"
+is_hitscan = true
+uses_projectile = false
+supports_hold_fire = true
+magazine_size = 30
+reserve_ammo_max = 90
+reload_time_sec = 3.2
+shot_cooldown_sec = 0.1
+pellets_per_shot = 1
+body_damage = 10.0
+head_damage = 14.0
+spread_degrees = 1.0
+max_range_m = 120.0
+projectile_scene_path = ""
+projectile_speed_mps = 0.0
+projectile_gravity_scale = 1.0
+charges_max = 0
+effect_duration_sec = 0.0
+effect_radius_m = 0.0
+alt_action_type = &""
+move_speed_multiplier = 1.0
+propulsion_force = 0.0

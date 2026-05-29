@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="WeaponDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_definition.gd" id="1_weapon_definition"]
+
+[resource]
+script = ExtResource("1_weapon_definition")
+weapon_id = &"sniper"
+slot_type = &"primary"
+display_name = "Sniper"
+fire_mode = &"semi"
+is_hitscan = true
+uses_projectile = false
+supports_hold_fire = false
+magazine_size = 1
+reserve_ammo_max = 9
+reload_time_sec = 2.0
+shot_cooldown_sec = 1.0
+pellets_per_shot = 1
+body_damage = 50.0
+head_damage = 100.0
+spread_degrees = 0.05
+max_range_m = 180.0
+projectile_scene_path = ""
+projectile_speed_mps = 0.0
+projectile_gravity_scale = 1.0
+charges_max = 0
+effect_duration_sec = 0.0
+effect_radius_m = 0.0
+alt_action_type = &""
+move_speed_multiplier = 1.0
+propulsion_force = 0.0
+scope_enabled = true
+scope_fov = 26.0
+scope_transition_sec = 0.2
+scope_sensitivity_multiplier = 0.34
+scope_viewmodel_position = Vector3(-0.18, 0.08, -0.26)
+scope_viewmodel_rotation_degrees = Vector3(-1.5, -3, 0)

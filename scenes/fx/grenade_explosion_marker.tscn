@@ -1,0 +1,39 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/grenade_explosion_marker.gd" id="1_grenade_explosion_marker"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_grenade_explosion"]
+radius = 1.0
+height = 2.0
+radial_segments = 24
+rings = 12
+
+[sub_resource type="SphereMesh" id="SphereMesh_grenade_core"]
+radius = 0.18
+height = 0.36
+radial_segments = 18
+rings = 8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grenade_explosion"]
+transparency = 1
+albedo_color = Color(1, 0.30, 0.04, 0.55)
+emission_enabled = true
+emission = Color(1, 0.24, 0.05, 1)
+emission_energy_multiplier = 1.4
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grenade_core"]
+albedo_color = Color(1, 0.62, 0.12, 1)
+emission_enabled = true
+emission = Color(1, 0.42, 0.06, 1)
+emission_energy_multiplier = 3.5
+
+[node name="GrenadeExplosionMarker" type="Node3D"]
+script = ExtResource("1_grenade_explosion_marker")
+
+[node name="Shell" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_grenade_explosion")
+material_override = SubResource("StandardMaterial3D_grenade_explosion")
+
+[node name="Core" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_grenade_core")
+material_override = SubResource("StandardMaterial3D_grenade_core")

@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/procedural_viewmodel.gd" id="1_procedural_viewmodel"]
+
+[node name="PortalGunViewModel" type="Node3D"]
+script = ExtResource("1_procedural_viewmodel")
+weapon_id = &"portal_gun"
+viewmodel_kind = "portal_gun"
+placeholder_note = "Deliberate v1 portal gun placeholder because the local Quaternius baseline has no portal-gun asset."
+model_position = Vector3(0.20, -0.13, -0.42)
+model_rotation_degrees = Vector3(-6, -12, 0)

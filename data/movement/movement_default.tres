@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MovementConfig" format=3 uid="uid://vdobv25ojljg"]
+
+[ext_resource type="Script" uid="uid://co1c0hylrxb4o" path="res://scripts/player/movement_config.gd" id="1_movement_config"]
+
+[resource]
+script = ExtResource("1_movement_config")
+ground_deceleration = 72.0
+ground_friction = 20.0
+ground_counter_deceleration = 140.0
+ground_counter_friction = 34.0
+ground_lateral_deceleration = 105.0
+ground_lateral_friction = 26.0
+slide_max_duration = 1.85
+wall_jump_min_outward_speed = 8.5
+wall_same_surface_reattach_lockout_after_jump = 0.65
