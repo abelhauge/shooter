@@ -10,12 +10,15 @@ signal start_requested()
 var _status_label: Label
 var _address_edit: LineEdit
 var _port_edit: LineEdit
+var _lan_hosts_option: OptionButton
+var _join_lan_button: Button
 var _ready_button: Button
 var _start_button: Button
 var _primary_option: OptionButton
 var _secondary_option: OptionButton
 var _melee_option: OptionButton
 var _artillery_option: OptionButton
+var _lan_hosts: Array[Dictionary] = []
 
 func _ready() -> void:
 	_build_ui()
@@ -44,6 +47,13 @@ func smoke_press_join(address: String, port: int) -> void:
 	_port_edit.text = str(port)
 	_on_join_pressed()
 
+func smoke_press_join_lan(index := 0) -> bool:
+	if _lan_hosts.is_empty() or index < 0 or index >= _lan_hosts.size():
+		return false
+	_lan_hosts_option.select(index)
+	_on_join_lan_pressed()
+	return true
+
 func smoke_press_ready() -> void:
 	_on_ready_pressed()
 
@@ -52,6 +62,9 @@ func smoke_press_start() -> void:
 
 func smoke_get_status() -> String:
 	return _status_label.text if _status_label != null else ""
+
+func smoke_get_lan_host_count() -> int:
+	return _lan_hosts.size()
 
 func smoke_get_slot_weapon_ids() -> Dictionary:
 	return {
@@ -137,6 +150,22 @@ func _build_ui() -> void:
 	_port_edit.custom_minimum_size = Vector2(140, 36)
 	_style_line_edit(_port_edit)
 	network_row.add_child(_port_edit)
+
+	var lan_row := HBoxContainer.new()
+	lan_row.add_theme_constant_override("separation", 10)
+	box.add_child(lan_row)
+	_lan_hosts_option = OptionButton.new()
+	_lan_hosts_option.custom_minimum_size = Vector2(374, 34)
+	_style_option_button(_lan_hosts_option)
+	lan_row.add_child(_lan_hosts_option)
+
+	_join_lan_button = Button.new()
+	_join_lan_button.text = "Join LAN"
+	_join_lan_button.custom_minimum_size = Vector2(176, 34)
+	_style_button(_join_lan_button, Color(0.24, 0.44, 0.36, 1.0))
+	_join_lan_button.pressed.connect(_on_join_lan_pressed)
+	lan_row.add_child(_join_lan_button)
+	set_lan_hosts([])
 
 	_primary_option = _create_slot_option(box, "Primary", &"primary")
 	_secondary_option = _create_slot_option(box, "Secondary", &"secondary")
@@ -312,6 +341,29 @@ func _selected_loadout() -> Dictionary:
 		"artillery": _selected_weapon(_artillery_option),
 	}
 
+func set_lan_hosts(hosts: Array[Dictionary]) -> void:
+	_lan_hosts = hosts.duplicate(true)
+	if _lan_hosts_option == null:
+		return
+	_lan_hosts_option.clear()
+	if _lan_hosts.is_empty():
+		_lan_hosts_option.add_item("No LAN matches found")
+		_lan_hosts_option.disabled = true
+		if _join_lan_button != null:
+			_join_lan_button.disabled = true
+		return
+	_lan_hosts_option.disabled = false
+	if _join_lan_button != null:
+		_join_lan_button.disabled = false
+	for host in _lan_hosts:
+		var label := "%s  %s:%d" % [
+			String(host.get("name", "LAN Host")),
+			String(host.get("address", "")),
+			int(host.get("port", NetworkConstants.DEFAULT_PORT)),
+		]
+		_lan_hosts_option.add_item(label)
+		_lan_hosts_option.set_item_metadata(_lan_hosts_option.get_item_count() - 1, host)
+
 func _on_offline_pressed() -> void:
 	offline_requested.emit(_selected_loadout())
 
@@ -320,6 +372,24 @@ func _on_host_pressed() -> void:
 
 func _on_join_pressed() -> void:
 	join_requested.emit(_address_edit.text.strip_edges(), _read_port(), _selected_loadout())
+
+func _on_join_lan_pressed() -> void:
+	if _lan_hosts.is_empty() or _lan_hosts_option == null:
+		set_status("No LAN match found yet.")
+		return
+	var index := _lan_hosts_option.selected
+	if index < 0 or index >= _lan_hosts.size():
+		set_status("No LAN match selected.")
+		return
+	var host: Dictionary = _lan_hosts[index]
+	var address := String(host.get("address", ""))
+	var port := int(host.get("port", NetworkConstants.DEFAULT_PORT))
+	if address == "" or port <= 0:
+		set_status("LAN match has no valid address.")
+		return
+	_address_edit.text = address
+	_port_edit.text = str(port)
+	join_requested.emit(address, port, _selected_loadout())
 
 func _on_ready_pressed() -> void:
 	ready_requested.emit()

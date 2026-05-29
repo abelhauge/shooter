@@ -37,6 +37,7 @@ const P14_WEAPON_PLAYTEST_DURATION_SEC := 300.0
 var _active_scene: Node
 var _network_session: NetworkSession
 var _lobby_ready_by_peer: Dictionary = {}
+var _game_scene_ready_by_peer: Dictionary = {}
 var _selected_loadout: LoadoutDefinition = preload("res://data/loadouts/default_v1_loadout.tres")
 var _smoke_test := ""
 var _smoke_expected_peers := 0
@@ -94,21 +95,30 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _load_game_root() -> void:
-	if _active_scene != null:
-		_active_scene.queue_free()
-	_active_scene = GAME_ROOT_SCENE.instantiate()
+	if _network_session != null and _network_session.is_hosting:
+		_network_session.stop_lan_discovery()
+	var game_root := GAME_ROOT_SCENE.instantiate()
+	game_root.name = "GameRoot"
+	_clear_active_scene()
+	_active_scene = game_root
 	if _active_scene.has_method("set_selected_loadout"):
 		_active_scene.set_selected_loadout(_selected_loadout)
 	if _active_scene.has_method("set_network_session"):
 		_active_scene.set_network_session(_network_session)
 	add_child(_active_scene)
+	_push_game_scene_readiness_to_active_scene()
+	if _network_session != null and _network_session.is_active():
+		if multiplayer.is_server():
+			_mark_game_scene_ready(_network_session.local_peer_id(), true)
+		else:
+			call_deferred("_notify_host_game_scene_ready")
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _load_lobby() -> void:
-	if _active_scene != null:
-		_active_scene.queue_free()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var lobby: LobbyMenu = LOBBY_MENU_SCENE.instantiate()
+	lobby.name = "LobbyMenu"
+	_clear_active_scene()
 	_active_scene = lobby
 	add_child(lobby)
 	lobby.offline_requested.connect(_on_lobby_offline_requested)
@@ -116,6 +126,16 @@ func _load_lobby() -> void:
 	lobby.join_requested.connect(_on_lobby_join_requested)
 	lobby.ready_requested.connect(_on_lobby_ready_requested)
 	lobby.start_requested.connect(_on_lobby_start_requested)
+	if _network_session != null:
+		_network_session.start_lan_discovery()
+		_refresh_lobby_lan_hosts()
+
+func _clear_active_scene() -> void:
+	if _active_scene != null:
+		if _active_scene.get_parent() == self:
+			remove_child(_active_scene)
+		_active_scene.queue_free()
+		_active_scene = null
 
 func _apply_network_args() -> bool:
 	var args := OS.get_cmdline_user_args()
@@ -131,10 +151,12 @@ func _apply_network_args() -> bool:
 			port = int(arg.trim_prefix("--port="))
 	if requested_host:
 		_network_arg_requested_host = true
+		_game_scene_ready_by_peer.clear()
 		_network_session.host(port)
 		return true
 	elif join_address != "":
 		_network_arg_requested_join = true
+		_game_scene_ready_by_peer.clear()
 		_network_session.join(join_address, port)
 		return true
 	return false
@@ -208,6 +230,8 @@ func _begin_verification_capture() -> void:
 	print("VERIFICATION_CAPTURE_START %s" % _verification_capture)
 	if _verification_capture == "p01":
 		await _capture_p01_baseline()
+	elif _verification_capture == "lan-discovery-lobby":
+		await _capture_lan_discovery_lobby()
 	elif _verification_capture == "p03":
 		await _capture_p03_environment_asset_proof()
 	elif _verification_capture == "p04":
@@ -309,6 +333,20 @@ func _capture_p01_baseline() -> void:
 		get_tree().quit(1)
 		return
 	print("VERIFICATION_CAPTURE_PASS p01")
+	get_tree().quit(0)
+
+func _capture_lan_discovery_lobby() -> void:
+	await _wait_for_render_frames(8)
+	if not (_active_scene is LobbyMenu):
+		printerr("VERIFICATION_CAPTURE_FAIL lan-discovery-lobby expected lobby scene")
+		get_tree().quit(1)
+		return
+	var screenshot_result := _save_viewport_png("res://docs/verification/screenshots/lan_discovery_lobby.png")
+	if screenshot_result != OK:
+		printerr("VERIFICATION_CAPTURE_FAIL lan-discovery-lobby screenshot: %s" % error_string(screenshot_result))
+		get_tree().quit(1)
+		return
+	print("VERIFICATION_CAPTURE_PASS lan-discovery-lobby")
 	get_tree().quit(0)
 
 func _capture_p03_environment_asset_proof() -> void:
@@ -3647,6 +3685,15 @@ func _begin_smoke_test() -> void:
 			_finish_smoke_failure("lobby-client smoke expected lobby scene")
 			return
 		(_active_scene as LobbyMenu).smoke_press_join(_smoke_host, _smoke_port)
+	elif _smoke_test == "lan-discovery-host":
+		if not (_active_scene is LobbyMenu):
+			_finish_smoke_failure("lan-discovery-host smoke expected lobby scene")
+			return
+		(_active_scene as LobbyMenu).smoke_press_host(_smoke_port)
+	elif _smoke_test == "lan-discovery-client":
+		if not (_active_scene is LobbyMenu):
+			_finish_smoke_failure("lan-discovery-client smoke expected lobby scene")
+			return
 	elif _smoke_test == "lobby-validation":
 		if not (_active_scene is LobbyMenu):
 			_finish_smoke_failure("lobby-validation smoke expected lobby scene")
@@ -3686,6 +3733,10 @@ func _tick_smoke_test(delta: float) -> void:
 		_tick_lobby_host_smoke()
 	elif _smoke_test == "lobby-client":
 		_tick_lobby_client_smoke(delta)
+	elif _smoke_test == "lan-discovery-host":
+		_tick_lan_discovery_host_smoke()
+	elif _smoke_test == "lan-discovery-client":
+		_tick_lan_discovery_client_smoke(delta)
 	elif _smoke_test == "weapons":
 		_tick_weapons_smoke()
 
@@ -3795,6 +3846,42 @@ func _tick_lobby_client_smoke(delta: float) -> void:
 		return
 	if _run_game_smoke_checks(2, false):
 		_finish_smoke_success("lobby client joined, readied, and entered game")
+
+func _tick_lan_discovery_host_smoke() -> void:
+	if _network_session == null or not _network_session.is_hosting:
+		return
+	if _lobby_ready_by_peer.size() < _smoke_expected_peers + 1:
+		return
+	for ready in _lobby_ready_by_peer.values():
+		if not bool(ready):
+			return
+	_finish_smoke_success("LAN discovery host advertised and received %d ready peer(s)" % _smoke_expected_peers)
+
+func _tick_lan_discovery_client_smoke(delta: float) -> void:
+	if _network_session == null:
+		return
+	if _network_session.is_connection_ready():
+		_smoke_connected_to_host = true
+	if _smoke_connected_to_host:
+		if not _smoke_ready_sent:
+			_smoke_ready_sent = true
+			if _active_scene is LobbyMenu:
+				(_active_scene as LobbyMenu).smoke_press_ready()
+			else:
+				_on_lobby_ready_requested()
+			_smoke_connected_hold_sec = 0.0
+		else:
+			_smoke_connected_hold_sec += delta
+		if _smoke_ready_sent and _smoke_connected_hold_sec >= 1.0:
+			_finish_smoke_success("LAN discovery client joined discovered host and sent ready")
+		return
+	if not (_active_scene is LobbyMenu):
+		return
+	var lobby := _active_scene as LobbyMenu
+	if lobby.smoke_get_lan_host_count() <= 0:
+		return
+	if not lobby.smoke_press_join_lan(0):
+		_finish_smoke_failure("LAN discovery found a host but could not join it")
 
 func _tick_weapons_smoke() -> void:
 	if not _is_game_scene_ready():
@@ -3923,6 +4010,8 @@ func _bind_network_session() -> void:
 	_network_session.connection_failed.connect(_on_network_connection_failed)
 	_network_session.peer_joined.connect(_on_network_peer_joined)
 	_network_session.peer_left.connect(_on_network_peer_left)
+	_network_session.session_closed.connect(_on_network_session_closed)
+	_network_session.lan_hosts_changed.connect(_on_lan_hosts_changed)
 
 func _on_lobby_offline_requested(loadout: Dictionary) -> void:
 	_apply_selected_loadout(loadout)
@@ -3931,6 +4020,7 @@ func _on_lobby_offline_requested(loadout: Dictionary) -> void:
 
 func _on_lobby_host_requested(port: int, loadout: Dictionary) -> void:
 	_apply_selected_loadout(loadout)
+	_game_scene_ready_by_peer.clear()
 	var error := _network_session.host(port)
 	if error == OK:
 		_lobby_ready_by_peer = {1: true}
@@ -3941,6 +4031,7 @@ func _on_lobby_join_requested(address: String, port: int, loadout: Dictionary) -
 	if address == "":
 		_set_lobby_status("Enter a host IP address before joining.", false, false)
 		return
+	_game_scene_ready_by_peer.clear()
 	var error := _network_session.join(address, port)
 	if error == OK:
 		_set_lobby_status("Connecting to %s:%d..." % [address, port], false, false)
@@ -3956,6 +4047,7 @@ func _on_lobby_start_requested() -> void:
 	if not multiplayer.is_server():
 		_set_lobby_status("Only the host can start the match.", _network_session.is_client, false)
 		return
+	_game_scene_ready_by_peer.clear()
 	start_network_match.rpc()
 	_load_game_root()
 
@@ -3966,20 +4058,41 @@ func _on_network_hosting_started(port: int) -> void:
 func _on_network_connected_to_host() -> void:
 	_smoke_connected_to_host = true
 	_set_lobby_status("Connected. Press Ready, then wait for host start.", true, false)
+	if _is_game_scene_ready():
+		call_deferred("_notify_host_game_scene_ready")
 
 func _on_network_connection_failed(reason: String) -> void:
 	if _verification_capture.begins_with("p08"):
 		print("VERIFICATION_CAPTURE_NETWORK_P08 connection_failed reason=%s %s" % [reason, _p08_connection_state_summary()])
 	_set_lobby_status(reason, false, false)
+	call_deferred("_restart_lan_discovery_if_lobby")
 
 func _on_network_peer_joined(peer_id: int) -> void:
 	if multiplayer.is_server():
 		_lobby_ready_by_peer[peer_id] = false
+		_game_scene_ready_by_peer.erase(peer_id)
 		_set_lobby_status(_build_lobby_status_text(), false, true)
 
 func _on_network_peer_left(peer_id: int) -> void:
 	_lobby_ready_by_peer.erase(peer_id)
+	_mark_game_scene_ready(peer_id, false)
 	_set_lobby_status(_build_lobby_status_text(), false, multiplayer.is_server())
+
+func _on_network_session_closed() -> void:
+	_game_scene_ready_by_peer.clear()
+
+func _on_lan_hosts_changed(_hosts: Array) -> void:
+	_refresh_lobby_lan_hosts()
+
+func _refresh_lobby_lan_hosts() -> void:
+	if not (_active_scene is LobbyMenu) or _network_session == null:
+		return
+	(_active_scene as LobbyMenu).set_lan_hosts(_network_session.get_lan_hosts())
+
+func _restart_lan_discovery_if_lobby() -> void:
+	if _active_scene is LobbyMenu and _network_session != null and not _network_session.is_active():
+		_network_session.start_lan_discovery()
+		_refresh_lobby_lan_hosts()
 
 func _set_lobby_status(text: String, show_ready: bool, show_start: bool) -> void:
 	if _active_scene is LobbyMenu:
@@ -4015,4 +4128,37 @@ func submit_lobby_ready(is_ready: bool) -> void:
 
 @rpc("authority", "reliable")
 func start_network_match() -> void:
+	_game_scene_ready_by_peer.clear()
 	_load_game_root()
+
+@rpc("any_peer", "reliable")
+func submit_game_scene_ready() -> void:
+	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0:
+		return
+	_mark_game_scene_ready(sender, true)
+
+func _notify_host_game_scene_ready() -> void:
+	if _network_session == null or not _network_session.is_client or not _network_session.is_connection_ready():
+		return
+	if not _is_game_scene_ready():
+		return
+	submit_game_scene_ready.rpc_id(1)
+
+func _mark_game_scene_ready(peer_id: int, is_ready: bool) -> void:
+	if peer_id <= 0:
+		return
+	if is_ready:
+		_game_scene_ready_by_peer[peer_id] = true
+	else:
+		_game_scene_ready_by_peer.erase(peer_id)
+	if _active_scene != null and _active_scene.has_method("set_network_peer_scene_ready"):
+		_active_scene.set_network_peer_scene_ready(peer_id, is_ready)
+
+func _push_game_scene_readiness_to_active_scene() -> void:
+	if _active_scene == null or not _active_scene.has_method("set_network_peer_scene_ready"):
+		return
+	for peer_id in _game_scene_ready_by_peer.keys():
+		_active_scene.set_network_peer_scene_ready(int(peer_id), bool(_game_scene_ready_by_peer[peer_id]))

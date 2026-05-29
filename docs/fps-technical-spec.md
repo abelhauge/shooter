@@ -603,6 +603,17 @@ V1 skal bruge en enkel listen-server-model uden backend.
 - Klienter forbinder via IP eller LAN
 - Host er authoritative for kampregler og skade
 
+## LAN discovery
+
+V1 må bruge en lille lokal discovery-kanal til at finde private LAN-hosts uden backend:
+
+- Hostens ENet listen-server forbliver den autoritative matchforbindelse.
+- Mens hosten står i lobby, annonceres matchen via UDP multicast på en separat discovery-port.
+- Discovery-payload må kun indeholde lobby metadata som protocol version, host name, ENet-port, max players og lobby state.
+- Discovery må stoppe, når matchen starter, fordi v1 ikke tillader join mid-match.
+- Manual `Join By IP` skal bevares som fallback, hvis multicast eller lokal firewall blokerer discovery.
+- Discovery må ikke bruge ekstern backend, relay, NAT traversal eller central matchmaking.
+
 ## Simulation
 
 - Physics tick: `60 Hz`
