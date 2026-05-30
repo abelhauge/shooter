@@ -69,6 +69,9 @@ var _smoke_offline_system_checked := false
 var _smoke_all_weapons_checked := false
 var _smoke_network_authority_checked := false
 var _smoke_connected_hold_sec := 0.0
+var _smoke_client_hold_sec := 1.0
+var _smoke_disable_heartbeat := false
+var _smoke_heartbeat_timeout_peer_id := 0
 var _p06_driver_pose_requested := false
 var _p06_driver_pose_applied := false
 var _p07_duration_sec := 600.0
@@ -90,6 +93,10 @@ var _network_password := ""
 var _authenticated_peer_ids: Dictionary = {1: true}
 var _pending_auth_by_peer: Dictionary = {}
 var _client_password_accepted := false
+var _heartbeat_send_elapsed_sec := 0.0
+var _heartbeat_timeout_sec := NetworkConstants.HEARTBEAT_TIMEOUT_SEC
+var _heartbeat_last_seen_msec_by_peer: Dictionary = {}
+var _heartbeat_timed_out_peer_ids: Dictionary = {}
 var _verification_capture := ""
 var _dev_balance_dummy_enabled_for_next_game := false
 var _local_player_name := "Player"
@@ -116,6 +123,7 @@ func _ready() -> void:
 		call_deferred("_begin_verification_capture")
 
 func _process(delta: float) -> void:
+	_tick_network_heartbeat(delta)
 	if _smoke_active:
 		_tick_smoke_test(delta)
 
@@ -239,6 +247,7 @@ func _apply_network_args() -> bool:
 		_lobby_player_names_by_peer = {1: _local_player_name}
 		_authenticated_peer_ids = {1: true}
 		_pending_auth_by_peer.clear()
+		_reset_heartbeat_state()
 		_client_password_accepted = false
 		_network_session.host(port)
 		return true
@@ -248,6 +257,7 @@ func _apply_network_args() -> bool:
 		_lobby_player_names_by_peer = {1: _local_player_name}
 		_authenticated_peer_ids.clear()
 		_pending_auth_by_peer.clear()
+		_reset_heartbeat_state()
 		_client_password_accepted = false
 		_network_session.join(join_address, port)
 		return true
@@ -275,6 +285,12 @@ func _parse_smoke_args() -> void:
 			_smoke_port = int(arg.trim_prefix("--smoke-port="))
 		elif arg.begins_with("--smoke-timeout-sec="):
 			_smoke_timeout_sec = float(arg.trim_prefix("--smoke-timeout-sec="))
+		elif arg.begins_with("--smoke-client-hold-sec="):
+			_smoke_client_hold_sec = maxf(0.1, float(arg.trim_prefix("--smoke-client-hold-sec=")))
+		elif arg == "--smoke-disable-heartbeat":
+			_smoke_disable_heartbeat = true
+		elif arg.begins_with("--smoke-heartbeat-timeout-sec="):
+			_heartbeat_timeout_sec = maxf(0.5, float(arg.trim_prefix("--smoke-heartbeat-timeout-sec=")))
 		elif arg.begins_with("--verification-capture="):
 			_verification_capture = arg.trim_prefix("--verification-capture=")
 		elif arg == "--p06-driver-pose":
@@ -3779,6 +3795,9 @@ func _begin_smoke_test() -> void:
 	elif _smoke_test == "network-game":
 		if _network_session == null or not _network_session.is_active():
 			_finish_smoke_failure("network-game smoke expected --host or --join")
+	elif _smoke_test == "heartbeat-timeout-host":
+		if _network_session == null or not _network_session.is_hosting:
+			_finish_smoke_failure("heartbeat-timeout-host smoke expected --host")
 	elif _smoke_test == "lobby-host":
 		if not (_active_scene is LobbyMenu):
 			_finish_smoke_failure("lobby-host smoke expected lobby scene")
@@ -3863,12 +3882,14 @@ func _begin_smoke_test() -> void:
 func _tick_smoke_test(delta: float) -> void:
 	_smoke_elapsed_sec += delta
 	if _smoke_elapsed_sec >= _smoke_timeout_sec:
-		_finish_smoke_failure("smoke test timed out after %.2f sec" % _smoke_timeout_sec)
+		_finish_smoke_failure("smoke test timed out after %.2f sec%s" % [_smoke_timeout_sec, _smoke_runtime_summary_suffix()])
 		return
 	if _smoke_test == "offline":
 		_tick_offline_smoke()
 	elif _smoke_test == "network-game":
 		_tick_network_game_smoke(delta)
+	elif _smoke_test == "heartbeat-timeout-host":
+		_tick_heartbeat_timeout_host_smoke()
 	elif _smoke_test == "lobby-host":
 		_tick_lobby_host_smoke()
 	elif _smoke_test == "lobby-client":
@@ -3898,6 +3919,20 @@ func _tick_offline_smoke() -> void:
 			_smoke_offline_system_checked = true
 		_finish_smoke_success("offline game scene, movement/combat/HUD/match/art smoke passed")
 
+func _smoke_runtime_summary_suffix() -> String:
+	if _active_scene == null or not _active_scene.has_method("get_runtime_smoke_summary"):
+		return ""
+	var summary: Dictionary = _active_scene.get_runtime_smoke_summary()
+	return " summary=%s" % str({
+		"network_players": summary.get("network_players", "n/a"),
+		"remote_proxies": summary.get("remote_proxies", "n/a"),
+		"team_counts": summary.get("team_counts", {}),
+		"match_phase": summary.get("match_phase", "n/a"),
+		"authenticated": _authenticated_peer_ids.keys(),
+		"ready": _lobby_ready_by_peer.keys(),
+		"scene_ready": _game_scene_ready_by_peer.keys(),
+	})
+
 func _tick_network_game_smoke(delta: float) -> void:
 	if not _is_game_scene_ready():
 		return
@@ -3915,13 +3950,18 @@ func _tick_network_game_smoke(delta: float) -> void:
 		if not _apply_p06_driver_pose_if_requested():
 			return
 		_smoke_connected_hold_sec += delta
-		if _smoke_connected_hold_sec < 1.0:
+		if _smoke_connected_hold_sec < _smoke_client_hold_sec:
 			return
 		if _run_game_smoke_checks(2, false):
 			_finish_smoke_success("network client connected and game scene ready")
 		return
 	if _network_arg_requested_host and not _network_session.is_hosting:
 		_finish_smoke_failure("host network session stopped before smoke completed")
+		return
+	if _smoke_expected_peers > 0 and _smoke_network_authority_checked:
+		if _smoke_elapsed_sec < _smoke_host_min_runtime_sec():
+			return
+		_finish_smoke_success("network host has %d expected peer(s)" % _smoke_expected_peers)
 		return
 	var min_players := _smoke_expected_peers + 1 if _smoke_expected_peers > 0 else 1
 	if _run_game_smoke_checks(min_players, false):
@@ -3936,6 +3976,19 @@ func _tick_network_game_smoke(delta: float) -> void:
 		if _smoke_expected_peers > 0 and _smoke_elapsed_sec < _smoke_host_min_runtime_sec():
 			return
 		_finish_smoke_success("network host has %d expected peer(s)" % _smoke_expected_peers)
+
+func _tick_heartbeat_timeout_host_smoke() -> void:
+	if _network_session == null or not _network_session.is_hosting:
+		_finish_smoke_failure("heartbeat timeout host session stopped before smoke completed")
+		return
+	if _smoke_heartbeat_timeout_peer_id <= 0:
+		return
+	var peer_id := _smoke_heartbeat_timeout_peer_id
+	if _authenticated_peer_ids.has(peer_id) or _lobby_ready_by_peer.has(peer_id) or _game_scene_ready_by_peer.has(peer_id):
+		return
+	if _active_scene != null and _active_scene.has_method("smoke_has_network_peer") and _active_scene.smoke_has_network_peer(peer_id):
+		return
+	_finish_smoke_success("peer %d timed out and was removed" % peer_id)
 
 func _tick_lobby_host_smoke() -> void:
 	if _network_session == null or not _network_session.is_hosting:
@@ -3956,6 +4009,11 @@ func _tick_lobby_host_smoke() -> void:
 				_on_lobby_start_requested()
 			return
 	if not _is_game_scene_ready():
+		return
+	if _smoke_expected_peers > 0 and _smoke_network_authority_checked:
+		if _smoke_elapsed_sec < _smoke_host_min_runtime_sec():
+			return
+		_finish_smoke_success("lobby host started match with %d expected peer(s)" % _smoke_expected_peers)
 		return
 	var min_players := _smoke_expected_peers + 1 if _smoke_expected_peers > 0 else 1
 	if _run_game_smoke_checks(min_players, false):
@@ -3987,7 +4045,7 @@ func _tick_lobby_client_smoke(delta: float) -> void:
 	if not _is_game_scene_ready():
 		return
 	_smoke_connected_hold_sec += delta
-	if _smoke_connected_hold_sec < 1.0:
+	if _smoke_connected_hold_sec < _smoke_client_hold_sec:
 		return
 	if _run_game_smoke_checks(2, false):
 		_finish_smoke_success("lobby client joined, readied, and entered game")
@@ -4184,6 +4242,7 @@ func _on_lobby_host_requested(port: int, password: String, loadout: Dictionary) 
 	_game_scene_ready_by_peer.clear()
 	_authenticated_peer_ids = {1: true}
 	_pending_auth_by_peer.clear()
+	_reset_heartbeat_state()
 	_client_password_accepted = false
 	var error := _network_session.host(port)
 	if error == OK:
@@ -4205,6 +4264,7 @@ func _on_lobby_join_requested(address: String, port: int, password: String, load
 	_game_scene_ready_by_peer.clear()
 	_authenticated_peer_ids.clear()
 	_pending_auth_by_peer.clear()
+	_reset_heartbeat_state()
 	_client_password_accepted = false
 	var error := _network_session.join(address, port)
 	if error == OK:
@@ -4257,6 +4317,7 @@ func _accept_authenticated_peer(peer_id: int, player_name: String) -> void:
 		return
 	_pending_auth_by_peer.erase(peer_id)
 	_authenticated_peer_ids[peer_id] = true
+	_touch_peer_heartbeat(peer_id)
 	var sanitized_name := _sanitize_player_name(player_name)
 	if sanitized_name == "":
 		sanitized_name = "Peer %d" % peer_id
@@ -4295,18 +4356,31 @@ func _send_match_start_to_peer(peer_id: int) -> void:
 	start_network_match.rpc_id(peer_id)
 
 func _on_network_peer_left(peer_id: int) -> void:
+	_remove_network_peer_state(peer_id, "left")
+
+func _remove_network_peer_state(peer_id: int, reason := "left") -> void:
+	if peer_id <= 0:
+		return
 	_lobby_ready_by_peer.erase(peer_id)
 	_lobby_player_names_by_peer.erase(peer_id)
 	_authenticated_peer_ids.erase(peer_id)
 	_pending_auth_by_peer.erase(peer_id)
+	_heartbeat_last_seen_msec_by_peer.erase(peer_id)
+	_heartbeat_timed_out_peer_ids.erase(peer_id)
 	_push_authenticated_peers_to_active_scene()
 	_mark_game_scene_ready(peer_id, false)
+	if _active_scene != null and _active_scene.has_method("remove_network_peer"):
+		_active_scene.remove_network_peer(peer_id)
+	if reason == "heartbeat_timeout":
+		_smoke_heartbeat_timeout_peer_id = peer_id
+		print("NETWORK_HEARTBEAT_TIMEOUT peer_id=%d timeout_sec=%.2f" % [peer_id, _heartbeat_timeout_sec])
 	_set_lobby_status(_build_lobby_status_text(), false, multiplayer.is_server())
 
 func _on_network_session_closed() -> void:
 	_game_scene_ready_by_peer.clear()
 	_pending_match_start_by_peer.clear()
 	_pending_auth_by_peer.clear()
+	_reset_heartbeat_state()
 	_client_password_accepted = false
 	_authenticated_peer_ids = {1: true}
 	_push_authenticated_peers_to_active_scene()
@@ -4333,6 +4407,55 @@ func _set_lobby_status(text: String, show_ready: bool, show_start: bool) -> void
 func _push_authenticated_peers_to_active_scene() -> void:
 	if _active_scene != null and _active_scene.has_method("set_authorized_network_peer_ids"):
 		_active_scene.set_authorized_network_peer_ids(_authenticated_peer_ids)
+
+func _reset_heartbeat_state() -> void:
+	_heartbeat_send_elapsed_sec = 0.0
+	_heartbeat_last_seen_msec_by_peer.clear()
+	_heartbeat_timed_out_peer_ids.clear()
+	_smoke_heartbeat_timeout_peer_id = 0
+
+func _tick_network_heartbeat(delta: float) -> void:
+	if _network_session == null or not _network_session.is_active():
+		return
+	if _network_session.is_client:
+		if _smoke_disable_heartbeat or not _client_password_accepted or not _network_session.is_connection_ready():
+			return
+		_heartbeat_send_elapsed_sec += delta
+		if _heartbeat_send_elapsed_sec < NetworkConstants.HEARTBEAT_SEND_INTERVAL_SEC:
+			return
+		_heartbeat_send_elapsed_sec = 0.0
+		submit_peer_heartbeat.rpc_id(1)
+	elif _network_session.is_hosting and multiplayer.is_server():
+		_expire_stale_heartbeats()
+
+func _touch_peer_heartbeat(peer_id: int) -> void:
+	if peer_id <= 0 or not multiplayer.is_server():
+		return
+	_heartbeat_last_seen_msec_by_peer[peer_id] = Time.get_ticks_msec()
+	_heartbeat_timed_out_peer_ids.erase(peer_id)
+
+func _expire_stale_heartbeats() -> void:
+	if _heartbeat_timeout_sec <= 0.0:
+		return
+	var now_msec := Time.get_ticks_msec()
+	var timeout_msec := int(_heartbeat_timeout_sec * 1000.0)
+	for peer_id_key in _authenticated_peer_ids.keys():
+		var peer_id := int(peer_id_key)
+		if peer_id == 1 or _heartbeat_timed_out_peer_ids.has(peer_id):
+			continue
+		var last_seen_msec := int(_heartbeat_last_seen_msec_by_peer.get(peer_id, now_msec))
+		if not _heartbeat_last_seen_msec_by_peer.has(peer_id):
+			_heartbeat_last_seen_msec_by_peer[peer_id] = last_seen_msec
+			continue
+		if now_msec - last_seen_msec < timeout_msec:
+			continue
+		_heartbeat_timed_out_peer_ids[peer_id] = true
+		_remove_network_peer_state(peer_id, "heartbeat_timeout")
+		call_deferred("_disconnect_peer_after_timeout", peer_id)
+
+func _disconnect_peer_after_timeout(peer_id: int) -> void:
+	if multiplayer.multiplayer_peer != null and multiplayer.is_server():
+		multiplayer.multiplayer_peer.disconnect_peer(peer_id)
 
 func _build_lobby_status_text() -> String:
 	var ready_count := 0
@@ -4400,12 +4523,23 @@ func submit_join_password(password: String, player_name := "") -> void:
 		_authenticated_peer_ids.erase(sender)
 		_lobby_ready_by_peer.erase(sender)
 		_lobby_player_names_by_peer.erase(sender)
+		_heartbeat_last_seen_msec_by_peer.erase(sender)
+		_heartbeat_timed_out_peer_ids.erase(sender)
 		_push_authenticated_peers_to_active_scene()
 		join_password_rejected.rpc_id(sender, "Invalid match password.")
 		call_deferred("_disconnect_peer_after_rejection", sender)
 		return
 	join_password_accepted.rpc_id(sender)
 	_accept_authenticated_peer(sender, player_name)
+
+@rpc("any_peer", "unreliable")
+func submit_peer_heartbeat() -> void:
+	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0 or not _is_peer_authenticated(sender):
+		return
+	_touch_peer_heartbeat(sender)
 
 @rpc("authority", "reliable")
 func join_password_accepted() -> void:
@@ -4430,6 +4564,7 @@ func submit_lobby_ready(is_ready: bool, player_name := "") -> void:
 		return
 	if not _is_peer_authenticated(sender):
 		return
+	_touch_peer_heartbeat(sender)
 	_lobby_ready_by_peer[sender] = is_ready
 	_lobby_player_names_by_peer[sender] = _sanitize_player_name(player_name)
 	if _active_scene != null and not (_active_scene is LobbyMenu):
@@ -4451,6 +4586,7 @@ func submit_game_scene_ready(player_name := "") -> void:
 		return
 	if not _is_peer_authenticated(sender):
 		return
+	_touch_peer_heartbeat(sender)
 	_lobby_player_names_by_peer[sender] = _sanitize_player_name(player_name)
 	_mark_game_scene_ready(sender, true)
 

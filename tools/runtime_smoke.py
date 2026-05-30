@@ -57,6 +57,7 @@ def run_single(name: str, user_args: list[str], timeout_sec: float, headless: bo
 
 
 def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_sec: float) -> bool:
+    client_hold_sec = 2.0
     if lobby:
         host_args = [
             "--smoke-test=lobby-host",
@@ -69,6 +70,7 @@ def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_
             "--smoke-host=127.0.0.1",
             f"--smoke-port={port}",
             f"--smoke-timeout-sec={int(timeout_sec)}",
+            f"--smoke-client-hold-sec={client_hold_sec:.1f}",
         ]
     else:
         host_args = [
@@ -85,6 +87,7 @@ def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_
             f"--password={SMOKE_PASSWORD}",
             "--smoke-test=network-game",
             f"--smoke-timeout-sec={int(timeout_sec)}",
+            f"--smoke-client-hold-sec={client_hold_sec:.1f}",
         ]
 
     procs: list[tuple[str, subprocess.Popen[str]]] = []

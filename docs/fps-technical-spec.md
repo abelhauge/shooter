@@ -641,6 +641,8 @@ V1 må bruge en lille lokal discovery-kanal til at finde private LAN-hosts uden 
 - Host-knappen starter en hostet kamp med det samme; der er ikke længere et obligatorisk ready/start-lobbytrin.
 - Nye peers der forbinder efter kampstart får en targeted `start_network_match` RPC, loader `GameRoot`, sender scene-ready tilbage til hosten og får derefter respawn/snapshot.
 - Nye peers må ikke sendes ind i kampen, før hostens egen `GameRoot` er scene-ready; peers der forbinder under host-load holdes pending, og LAN discovery viser først hosten som `in_game`, når hosten er klar.
+- Authenticated klienter sender heartbeat til hosten hvert `NetworkConstants.HEARTBEAT_SEND_INTERVAL_SEC`; hosten fjerner og disconnecter en peer, hvis der ikke er set heartbeat inden `NetworkConstants.HEARTBEAT_TIMEOUT_SEC`.
+- Heartbeat-timeout skal bruge samme cleanup som et normalt disconnect: lobby/ready/game-scene state slettes, `GameRoot` fjerner remote proxy, player state og weapon state, og hostens næste snapshot må ikke indeholde den stale peer.
 - Headless private host bruger samme readiness gate, men uden vindue eller lokal UI; den genstarter automatisk matchen efter results, så serverprocessen kan stå i baggrunden.
 - `NetworkConstants.MAX_ENET_CLIENTS` følger Godots ENet-loft på `4095` samtidige klienter; `MAX_PLAYERS` inkluderer hosten og er derfor `4096`.
 - Den reelle praktiske grænse er hostens maskine, netværk, map/spawn-readability og performance, ikke en 3v3-regel i gameplay-data.

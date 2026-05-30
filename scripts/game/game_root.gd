@@ -135,6 +135,23 @@ func authorize_network_peer(peer_id: int, player_name := "") -> void:
 		_respawn_network_peer(peer_id)
 	_send_authoritative_snapshot()
 
+func remove_network_peer(peer_id: int) -> void:
+	if peer_id <= 0:
+		return
+	_remove_network_peer_runtime_state(peer_id)
+	if network_session != null and network_session.is_active() and multiplayer.is_server():
+		_send_authoritative_snapshot()
+
+func smoke_has_network_peer(peer_id: int) -> bool:
+	return (
+		_network_game_ready_peers.has(peer_id)
+		or _network_player_states.has(peer_id)
+		or _network_weapon_states.has(peer_id)
+		or _network_player_names.has(peer_id)
+		or _authorized_network_peer_ids.has(peer_id)
+		or remote_proxies.has(peer_id)
+	)
+
 func set_dev_balance_dummy_enabled(enabled: bool) -> void:
 	_dev_balance_dummy_enabled = enabled
 	if not is_node_ready():
@@ -4507,7 +4524,16 @@ func _on_network_peer_joined(peer_id: int) -> void:
 		_send_authoritative_snapshot()
 
 func _on_network_peer_left(peer_id: int) -> void:
+	_remove_network_peer_runtime_state(peer_id)
+	if network_session != null and network_session.is_active() and multiplayer.is_server():
+		_send_authoritative_snapshot()
+
+func _remove_network_peer_runtime_state(peer_id: int) -> void:
 	_network_game_ready_peers.erase(peer_id)
+	_authorized_network_peer_ids.erase(peer_id)
+	_network_player_states.erase(peer_id)
+	_network_weapon_states.erase(peer_id)
+	_network_player_names.erase(peer_id)
 	if remote_proxies.has(peer_id):
 		remote_proxies[peer_id].queue_free()
 		remote_proxies.erase(peer_id)
@@ -5056,8 +5082,10 @@ func _send_explosion_marker_to_ready_peers(position: Vector3, radius: float) -> 
 func _apply_match_snapshot(snapshot: Dictionary) -> void:
 	match_director.apply_network_summary(snapshot)
 	var local_peer_id := network_session.local_peer_id() if network_session != null and network_session.is_active() else 1
+	var snapshot_peer_ids := {}
 	for state in snapshot.get("players", []):
 		var peer_id := int(state["peer_id"])
+		snapshot_peer_ids[peer_id] = true
 		state["player_name"] = _sanitize_player_name(String(state.get("player_name", "Peer %d" % peer_id)))
 		_network_player_states[peer_id] = state
 		_network_player_names[peer_id] = String(state["player_name"])
@@ -5076,6 +5104,10 @@ func _apply_match_snapshot(snapshot: Dictionary) -> void:
 			var proxy_slot := StringName(str(state["current_slot"]))
 			proxy.apply_snapshot(proxy_position, float(state["yaw"]), float(state["pitch"]), proxy_state, proxy_slot)
 			proxy.apply_combat_state(int(state["team_id"]), float(state["health"]), bool(state["is_alive"]))
+	for peer_id_key in _network_player_states.keys():
+		var peer_id := int(peer_id_key)
+		if peer_id != local_peer_id and not snapshot_peer_ids.has(peer_id):
+			_remove_network_peer_runtime_state(peer_id)
 
 @rpc("any_peer", "unreliable")
 func submit_player_transform(position: Vector3, yaw: float, pitch: float, state: StringName, slot: StringName) -> void:
