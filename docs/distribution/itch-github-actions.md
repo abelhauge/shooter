@@ -45,6 +45,12 @@ GitHub -> Actions -> Build and publish to itch.io -> Run workflow
 
 ## Local Release
 
+Run the installer first; it verifies or installs Godot, Python and butler:
+
+```bash
+./install.sh
+```
+
 Local publishing reads `.env` and pushes the same itch channels:
 
 ```bash

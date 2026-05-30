@@ -37,12 +37,23 @@ var _detected_public_ip := ""
 var _selected_weapon_by_slot: Dictionary = {}
 var _slot_buttons_by_weapon: Dictionary = {}
 var _slot_weapon_ids_by_slot: Dictionary = {}
+var _slot_summary_labels: Dictionary = {}
+var _preview_roots: Array[Node3D] = []
+var _preview_entries: Array[Dictionary] = []
 
 func _ready() -> void:
 	_build_ui()
 	set_status("Checking public IP...")
 	set_network_controls(false, false)
 	_begin_public_ip_detection()
+	set_process(true)
+
+func _process(delta: float) -> void:
+	for entry in _preview_entries:
+		_fit_preview_entry(entry)
+	for preview_root in _preview_roots:
+		if is_instance_valid(preview_root):
+			preview_root.rotate_y(delta * 0.72)
 
 func set_status(text: String) -> void:
 	if _status_label != null:
@@ -273,11 +284,24 @@ func _read_port() -> int:
 	return NetworkConstants.DEFAULT_PORT if port <= 0 else port
 
 func _create_slot_selector(parent: VBoxContainer, label_text: String, slot_type: StringName) -> void:
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 10)
+	parent.add_child(header)
+
 	var label := Label.new()
 	label.text = label_text.to_upper()
+	label.custom_minimum_size = Vector2(82, 18)
 	label.add_theme_font_size_override("font_size", 13)
 	label.add_theme_color_override("font_color", Color(0.72, 0.86, 0.92, 1.0))
-	parent.add_child(label)
+	header.add_child(label)
+
+	var summary := Label.new()
+	summary.text = ""
+	summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	summary.add_theme_font_size_override("font_size", 13)
+	summary.add_theme_color_override("font_color", Color(0.94, 0.97, 0.92, 1.0))
+	header.add_child(summary)
+	_slot_summary_labels[slot_type] = summary
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -292,10 +316,7 @@ func _create_slot_selector(parent: VBoxContainer, label_text: String, slot_type:
 		if definition.slot_type != slot_type:
 			continue
 		slot_ids.append(definition.weapon_id)
-		var button := Button.new()
-		button.toggle_mode = true
-		button.custom_minimum_size = _weapon_card_size(slot_type)
-		button.text = _weapon_card_text(definition)
+		var button := _create_weapon_preview_button(definition)
 		button.set_meta("weapon_id", definition.weapon_id)
 		button.set_meta("slot_type", slot_type)
 		button.pressed.connect(_on_weapon_card_pressed.bind(slot_type, definition.weapon_id))
@@ -342,14 +363,14 @@ func _style_option_button(option: OptionButton) -> void:
 
 func _style_weapon_button(button: Button, definition: WeaponDefinition, selected: bool) -> void:
 	var color := _weapon_color(definition)
-	var base_color := color if selected else Color(0.026, 0.035, 0.038, 0.96)
+	var base_color := color.darkened(0.18) if selected else Color(0.012, 0.017, 0.020, 0.96)
 	var border_color := Color(1.0, 0.82, 0.42, 0.92) if selected else color.darkened(0.10)
 	var border_width := 2 if selected else 1
 	button.add_theme_stylebox_override("normal", _style_box(base_color, border_color, border_width, 7))
 	button.add_theme_stylebox_override("hover", _style_box(base_color.lightened(0.08), Color(1.0, 0.86, 0.52, 0.82), 2, 7))
 	button.add_theme_stylebox_override("pressed", _style_box(base_color.darkened(0.18), Color(1.0, 0.70, 0.32, 0.92), 2, 7))
 	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
-	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_font_size_override("font_size", 1)
 
 func _style_button(button: Button, color: Color) -> void:
 	button.custom_minimum_size = Vector2(176, 38)
@@ -405,27 +426,189 @@ func _refresh_slot_buttons(slot_type: StringName) -> void:
 		var selected := StringName(str(weapon_id)) == selected_id
 		button.button_pressed = selected
 		_style_weapon_button(button, definition, selected)
+	var selected_definition: WeaponDefinition = load(WeaponController.WEAPON_PATHS[selected_id])
+	if _slot_summary_labels.has(slot_type):
+		(_slot_summary_labels[slot_type] as Label).text = _selected_weapon_summary(selected_definition)
 
 func _weapon_card_size(slot_type: StringName) -> Vector2:
 	if slot_type == &"melee":
-		return Vector2(560, 52)
-	return Vector2(134, 62)
+		return Vector2(560, 58)
+	return Vector2(134, 58)
 
-func _weapon_card_text(definition: WeaponDefinition) -> String:
-	var stat_line := ""
-	if definition.magazine_size > 0:
-		stat_line = "%d mag" % definition.magazine_size
-	elif definition.charges_max > 0:
-		stat_line = "%d charges" % definition.charges_max
-	elif definition.max_range_m > 0.0:
-		stat_line = "%.0fm" % definition.max_range_m
+func _create_weapon_preview_button(definition: WeaponDefinition) -> Button:
+	var button := Button.new()
+	button.toggle_mode = true
+	button.text = ""
+	button.tooltip_text = definition.display_name
+	button.custom_minimum_size = _weapon_card_size(definition.slot_type)
+
+	var viewport_container := SubViewportContainer.new()
+	viewport_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	viewport_container.stretch = true
+	viewport_container.set_anchors_preset(Control.PRESET_FULL_RECT)
+	viewport_container.offset_left = 6
+	viewport_container.offset_top = 5
+	viewport_container.offset_right = -6
+	viewport_container.offset_bottom = -5
+	button.add_child(viewport_container)
+
+	var viewport := SubViewport.new()
+	viewport.transparent_bg = false
+	viewport.disable_3d = false
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	viewport.size = Vector2i(160, 72)
+	viewport_container.add_child(viewport)
+
+	var world := Node3D.new()
+	viewport.add_child(world)
+
+	var environment := WorldEnvironment.new()
+	var environment_resource := Environment.new()
+	environment_resource.background_mode = Environment.BG_COLOR
+	environment_resource.background_color = Color(0.005, 0.008, 0.010, 1.0)
+	environment_resource.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment_resource.ambient_light_color = Color(0.32, 0.38, 0.42, 1.0)
+	environment_resource.ambient_light_energy = 2.4
+	environment.environment = environment_resource
+	world.add_child(environment)
+
+	var preview_root := Node3D.new()
+	preview_root.name = "%sPreview" % String(definition.weapon_id)
+	world.add_child(preview_root)
+	_preview_roots.append(preview_root)
+
+	var model_holder := Node3D.new()
+	model_holder.name = "ModelHolder"
+	preview_root.add_child(model_holder)
+
+	var view_model_path := String(WeaponController.VIEW_MODEL_PATHS.get(definition.weapon_id, ""))
+	if view_model_path != "" and ResourceLoader.exists(view_model_path, "PackedScene"):
+		var packed := load(view_model_path) as PackedScene
+		var model := packed.instantiate() as Node3D
+		model.position = _preview_model_position(definition)
+		model.rotation_degrees = _preview_model_rotation(definition)
+		model.scale *= _preview_model_scale(definition)
+		model_holder.add_child(model)
 	else:
-		stat_line = String(definition.fire_mode).to_upper()
+		model_holder.add_child(_create_fallback_preview_mesh(definition))
+
+	var camera := Camera3D.new()
+	camera.look_at_from_position(Vector3(0.0, 0.05, 1.2), Vector3(0.0, 0.0, 0.0), Vector3.UP)
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 0.82
+	camera.current = true
+	camera.visible = false
+	world.add_child(camera)
+	_preview_entries.append({
+		"holder": model_holder,
+		"fitted": false,
+	})
+	return button
+
+func _create_fallback_preview_mesh(definition: WeaponDefinition) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.48, 0.16, 0.18)
+	mesh_instance.mesh = mesh
+	mesh_instance.material_override = _create_preview_material(_weapon_color(definition))
+	return mesh_instance
+
+func _create_preview_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color.lightened(0.18)
+	material.metallic = 0.15
+	material.roughness = 0.42
+	return material
+
+func _preview_model_position(definition: WeaponDefinition) -> Vector3:
+	if definition.slot_type == &"melee":
+		return Vector3(-0.08, 0.00, 0.0)
+	if definition.slot_type == &"artillery":
+		return Vector3(-0.04, 0.02, 0.0)
+	return Vector3(-0.12, 0.00, 0.0)
+
+func _preview_model_rotation(definition: WeaponDefinition) -> Vector3:
+	if definition.slot_type == &"melee":
+		return Vector3(-8, -44, 4)
+	if definition.slot_type == &"artillery":
+		return Vector3(-12, -34, 0)
+	return Vector3(-8, -62, 0)
+
+func _preview_model_scale(definition: WeaponDefinition) -> Vector3:
+	if definition.slot_type == &"melee":
+		return Vector3(0.78, 0.78, 0.78)
+	if definition.slot_type == &"artillery":
+		return Vector3(0.85, 0.85, 0.85)
+	return Vector3(1.15, 1.15, 1.15)
+
+func _selected_weapon_summary(definition: WeaponDefinition) -> String:
+	var features: Array[String] = []
+	features.append(String(definition.fire_mode).to_upper())
+	if definition.magazine_size > 0:
+		features.append("%d mag" % definition.magazine_size)
+	elif definition.charges_max > 0:
+		features.append("%d charges" % definition.charges_max)
 	if definition.body_damage > 0.0:
-		stat_line += "  %.0f dmg" % definition.body_damage
+		features.append("%.0f body / %.0f head" % [definition.body_damage, definition.head_damage])
 	elif definition.effect_duration_sec > 0.0:
-		stat_line += "  %.0fs" % definition.effect_duration_sec
-	return "%s\n%s\n%s" % [definition.display_name, String(definition.fire_mode).to_upper(), stat_line]
+		features.append("%.0fs effect" % definition.effect_duration_sec)
+	if definition.max_range_m > 0.0:
+		features.append("%.0fm" % definition.max_range_m)
+	if definition.reload_time_sec > 0.0:
+		features.append("%.1fs reload" % definition.reload_time_sec)
+	return "%s  -  %s" % [definition.display_name, "  |  ".join(features)]
+
+func _fit_preview_entry(entry: Dictionary) -> void:
+	if bool(entry.get("fitted", false)):
+		return
+	var holder := entry.get("holder") as Node3D
+	if holder == null or not is_instance_valid(holder):
+		return
+	var bounds := _calculate_mesh_bounds(holder)
+	if bounds.is_empty():
+		return
+	var min_point: Vector3 = bounds["min"]
+	var max_point: Vector3 = bounds["max"]
+	var center := (min_point + max_point) * 0.5
+	var size := max_point - min_point
+	var max_dimension := maxf(size.x, maxf(size.y, size.z))
+	if max_dimension <= 0.001:
+		return
+	var fit_scale := 0.60 / max_dimension
+	holder.scale *= fit_scale
+	holder.position = -center * fit_scale
+	entry["fitted"] = true
+
+func _calculate_mesh_bounds(root_node: Node) -> Dictionary:
+	var state := {
+		"has_bounds": false,
+		"min": Vector3(1000000.0, 1000000.0, 1000000.0),
+		"max": Vector3(-1000000.0, -1000000.0, -1000000.0),
+	}
+	_collect_mesh_bounds(root_node, state)
+	if not bool(state["has_bounds"]):
+		return {}
+	return {
+		"min": state["min"],
+		"max": state["max"],
+	}
+
+func _collect_mesh_bounds(node: Node, state: Dictionary) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh != null:
+			var aabb := mesh_instance.get_aabb()
+			var min_corner := aabb.position
+			var max_corner := aabb.position + aabb.size
+			for x in [min_corner.x, max_corner.x]:
+				for y in [min_corner.y, max_corner.y]:
+					for z in [min_corner.z, max_corner.z]:
+						var point := mesh_instance.global_transform * Vector3(x, y, z)
+						state["min"] = (state["min"] as Vector3).min(point)
+						state["max"] = (state["max"] as Vector3).max(point)
+						state["has_bounds"] = true
+	for child in node.get_children():
+		_collect_mesh_bounds(child, state)
 
 func _weapon_color(definition: WeaponDefinition) -> Color:
 	if definition.scope_enabled:

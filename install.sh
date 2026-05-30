@@ -100,6 +100,75 @@ resolve_godot() {
   fi
 }
 
+resolve_butler() {
+  if [[ -n "${BUTLER_BIN:-}" ]]; then
+    if [[ "$BUTLER_BIN" == */* && -x "$BUTLER_BIN" ]]; then
+      printf '%s\n' "$BUTLER_BIN"
+    elif [[ "$BUTLER_BIN" == */* ]]; then
+      return 1
+    elif have "$BUTLER_BIN"; then
+      command -v "$BUTLER_BIN"
+    else
+      return 1
+    fi
+  elif have butler; then
+    command -v butler
+  elif [[ -x "$ROOT_DIR/.bin/butler" ]]; then
+    printf '%s\n' "$ROOT_DIR/.bin/butler"
+  else
+    return 1
+  fi
+}
+
+butler_broth_platform() {
+  case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64|Darwin-aarch64)
+      printf '%s\n' "darwin-arm64"
+      ;;
+    Darwin-x86_64)
+      printf '%s\n' "darwin-amd64"
+      ;;
+    Linux-x86_64|Linux-amd64)
+      printf '%s\n' "linux-amd64"
+      ;;
+    Linux-aarch64|Linux-arm64)
+      printf '%s\n' "linux-arm64"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+install_butler_from_broth() {
+  if resolve_butler >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local platform
+  platform="$(butler_broth_platform || true)"
+  if [[ -z "$platform" ]]; then
+    die "Unsupported OS/architecture for automatic butler install. Install butler manually or set BUTLER_BIN=/path/to/butler."
+  fi
+
+  if ! have curl; then
+    die "curl is required to install butler automatically."
+  fi
+  if ! have unzip; then
+    die "unzip is required to install butler automatically."
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  log "Installing butler from itch.io broth ($platform)"
+  curl -fsSL "https://broth.itch.zone/butler/$platform/LATEST/archive/default" -o "$tmp_dir/butler.zip"
+  unzip -q "$tmp_dir/butler.zip" -d "$tmp_dir/butler"
+  mkdir -p "$ROOT_DIR/.bin"
+  install -m 0755 "$tmp_dir/butler/butler" "$ROOT_DIR/.bin/butler"
+  rm -rf "$tmp_dir"
+  log "Installed butler at .bin/butler"
+}
+
 link_macos_godot() {
   local app_bin="/Applications/Godot.app/Contents/MacOS/Godot"
 
@@ -127,6 +196,8 @@ install_with_brew() {
     brew install --cask godot || brew install godot
   fi
 
+  install_butler_from_broth
+
   link_macos_godot
 }
 
@@ -141,9 +212,13 @@ install_with_apt() {
   if ! resolve_python >/dev/null 2>&1; then
     "${sudo_cmd[@]}" apt-get install -y python3
   fi
+  if ! have curl || ! have unzip; then
+    "${sudo_cmd[@]}" apt-get install -y curl unzip
+  fi
   if ! resolve_godot >/dev/null 2>&1; then
     "${sudo_cmd[@]}" apt-get install -y godot4 || "${sudo_cmd[@]}" apt-get install -y godot || true
   fi
+  install_butler_from_broth
 }
 
 install_with_dnf() {
@@ -156,9 +231,13 @@ install_with_dnf() {
   if ! resolve_python >/dev/null 2>&1; then
     "${sudo_cmd[@]}" dnf install -y python3
   fi
+  if ! have curl || ! have unzip; then
+    "${sudo_cmd[@]}" dnf install -y curl unzip
+  fi
   if ! resolve_godot >/dev/null 2>&1; then
     "${sudo_cmd[@]}" dnf install -y godot || true
   fi
+  install_butler_from_broth
 }
 
 install_with_pacman() {
@@ -171,9 +250,13 @@ install_with_pacman() {
   if ! resolve_python >/dev/null 2>&1; then
     "${sudo_cmd[@]}" pacman -S --needed --noconfirm python
   fi
+  if ! have curl || ! have unzip; then
+    "${sudo_cmd[@]}" pacman -S --needed --noconfirm curl unzip
+  fi
   if ! resolve_godot >/dev/null 2>&1; then
     "${sudo_cmd[@]}" pacman -S --needed --noconfirm godot || true
   fi
+  install_butler_from_broth
 }
 
 install_dependencies() {
@@ -224,6 +307,7 @@ fi
 
 PYTHON_BIN_RESOLVED="$(resolve_python || true)"
 GODOT_BIN_RESOLVED="$(resolve_godot || true)"
+BUTLER_BIN_RESOLVED="$(resolve_butler || true)"
 
 if [[ -z "$PYTHON_BIN_RESOLVED" ]]; then
   die "Python 3 is missing. Run ./install.sh without --check to install it where supported."
@@ -231,6 +315,10 @@ fi
 
 if [[ -z "$GODOT_BIN_RESOLVED" ]]; then
   die "Godot 4 is missing. Run ./install.sh without --check to install it where supported, or set GODOT_BIN=/path/to/Godot."
+fi
+
+if [[ -z "$BUTLER_BIN_RESOLVED" ]]; then
+  die "butler is missing. Run ./install.sh without --check to install it, or set BUTLER_BIN=/path/to/butler."
 fi
 
 GODOT_VERSION="$("$GODOT_BIN_RESOLVED" --version 2>/dev/null | head -n 1 || true)"
@@ -244,6 +332,7 @@ esac
 
 log "Python: $PYTHON_BIN_RESOLVED"
 log "Godot: $GODOT_BIN_RESOLVED ($GODOT_VERSION)"
+log "butler: $BUTLER_BIN_RESOLVED ($("$BUTLER_BIN_RESOLVED" version 2>/dev/null | head -n 1 || true))"
 
 check_asset_baseline
 
