@@ -75,6 +75,11 @@ mkdir -p build/windows build/macos
 "$GODOT_BIN" --headless --path "$ROOT_DIR" --export-release "Windows Desktop" "build/windows/MovementFPS.exe"
 cp build_version.txt build/windows/version.txt
 "$GODOT_BIN" --headless --path "$ROOT_DIR" --export-release "macOS" "build/macos/MovementFPS.zip"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  tools/ci/sign_macos_zip.sh "build/macos/MovementFPS.zip"
+else
+  echo "Skipping macOS ad-hoc signing: local publisher is not running on macOS." >&2
+fi
 cp build_version.txt build/macos/version.txt
 
 butler push "build/windows" "$ITCH_TARGET:windows" --userversion "$VERSION"

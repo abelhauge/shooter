@@ -16,8 +16,8 @@ env:
   GAME_VERSION_PREFIX: "0.1"
 
 jobs:
-  build-and-publish:
-    name: Build Windows/macOS and publish itch updates
+  build-windows:
+    name: Build and publish Windows
     runs-on: ubuntu-latest
     env:
       BUTLER_API_KEY: ${{ secrets.ITCH_KEY }}
@@ -70,19 +70,11 @@ jobs:
           godot --headless --path "$PWD" --export-release "Windows Desktop" "build/windows/MovementFPS.exe"
           cp build_version.txt build/windows/version.txt
 
-      - name: Export macOS
-        run: |
-          mkdir -p build/macos
-          godot --headless --path "$PWD" --export-release "macOS" "build/macos/MovementFPS.zip"
-          cp build_version.txt build/macos/version.txt
-
-      - name: Upload CI artifacts
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: movement-fps-${{ github.run_number }}-${{ github.run_attempt }}
-          path: |
-            build/windows/**
-            build/macos/**
+          name: movement-fps-windows-${{ github.run_number }}-${{ github.run_attempt }}
+          path: build/windows/**
 
       - name: Install butler
         run: |
@@ -91,7 +83,7 @@ jobs:
           sudo install -m 0755 /tmp/butler/butler /usr/local/bin/butler
           butler version
 
-      - name: Publish to itch.io
+      - name: Publish Windows to itch.io
         run: |
           if [ -z "${BUTLER_API_KEY:-}" ]; then
             echo "::error::Missing GitHub secret ITCH_KEY. Create an itch.io API key and add it as a repository Actions secret named ITCH_KEY."
@@ -99,4 +91,81 @@ jobs:
           fi
 
           butler push "build/windows" "${ITCH_TARGET}:windows" --userversion "${GAME_VERSION}"
+
+  build-macos:
+    name: Build, sign, and publish macOS
+    runs-on: macos-latest
+    env:
+      BUTLER_API_KEY: ${{ secrets.ITCH_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compute build version
+        run: |
+          VERSION="${GAME_VERSION_PREFIX}.${GITHUB_RUN_NUMBER}"
+          if [ "${GITHUB_RUN_ATTEMPT}" != "1" ]; then
+            VERSION="${VERSION}.${GITHUB_RUN_ATTEMPT}"
+          fi
+          echo "GAME_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "${VERSION}" > build_version.txt
+          echo "Using game version ${VERSION}"
+
+      - name: Install Godot editor and export templates
+        run: |
+          curl -fsSL \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_macos.universal.zip" \
+            -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo rm -rf /Applications/Godot.app
+          sudo cp -R /tmp/godot/Godot.app /Applications/Godot.app
+          sudo xattr -dr com.apple.quarantine /Applications/Godot.app || true
+
+          curl -fsSL \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz" \
+            -o /tmp/export_templates.tpz
+          mkdir -p "$HOME/Library/Application Support/Godot/export_templates/${GODOT_TEMPLATE_VERSION}"
+          unzip -q /tmp/export_templates.tpz -d /tmp/export_templates
+          cp -R /tmp/export_templates/templates/. "$HOME/Library/Application Support/Godot/export_templates/${GODOT_TEMPLATE_VERSION}/"
+
+          /Applications/Godot.app/Contents/MacOS/Godot --version
+
+      - name: Validate project
+        run: |
+          python3 tools/validate_static.py
+          python3 tools/ci/set_project_version.py "${GAME_VERSION}"
+          /Applications/Godot.app/Contents/MacOS/Godot --headless --import --path "$PWD"
+
+      - name: Export and ad-hoc sign macOS
+        run: |
+          mkdir -p build/macos
+          /Applications/Godot.app/Contents/MacOS/Godot --headless --path "$PWD" --export-release "macOS" "build/macos/MovementFPS.zip"
+          tools/ci/sign_macos_zip.sh "build/macos/MovementFPS.zip"
+          cp build_version.txt build/macos/version.txt
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: movement-fps-macos-${{ github.run_number }}-${{ github.run_attempt }}
+          path: build/macos/**
+
+      - name: Install butler
+        run: |
+          case "$(uname -m)" in
+            arm64) BUTLER_PLATFORM="darwin-arm64" ;;
+            *) BUTLER_PLATFORM="darwin-amd64" ;;
+          esac
+          curl -fsSL "https://broth.itch.zone/butler/${BUTLER_PLATFORM}/LATEST/archive/default" -o /tmp/butler.zip
+          unzip -q /tmp/butler.zip -d /tmp/butler
+          sudo install -m 0755 /tmp/butler/butler /usr/local/bin/butler
+          butler version
+
+      - name: Publish macOS to itch.io
+        run: |
+          if [ -z "${BUTLER_API_KEY:-}" ]; then
+            echo "::error::Missing GitHub secret ITCH_KEY. Create an itch.io API key and add it as a repository Actions secret named ITCH_KEY."
+            exit 1
+          fi
+
           butler push "build/macos/MovementFPS.zip" "${ITCH_TARGET}:mac" --userversion "${GAME_VERSION}"

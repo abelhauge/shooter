@@ -21,6 +21,13 @@ func _validate() -> void:
 		await process_frame
 
 	lobby.smoke_force_public_ip("203.0.113.77")
+	lobby.smoke_force_latest_itch_version("99.99.99")
+	if not lobby.smoke_is_update_banner_visible():
+		_fail("Forced newer itch version did not show update banner")
+		return
+	if not lobby.smoke_get_update_text().contains("99.99.99"):
+		_fail("Update banner did not include latest version: %s" % lobby.smoke_get_update_text())
+		return
 	var join_button := _find_button_by_text(lobby, "Join")
 	if join_button == null:
 		_fail("Join button was not found")

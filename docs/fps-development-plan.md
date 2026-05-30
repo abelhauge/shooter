@@ -510,7 +510,7 @@ Maal:
 Arbejde:
 
 - start to synlige instanser
-- brug lobby-flowet: Host Private Match, Join By IP, Ready, Host Start Match
+- brug aktuel online-flow: Host starter kamp med det samme, klient joiner via IP og loades ind i den igangværende kamp
 - test movement og combat mellem de to
 
 Exit-kriterier:
@@ -696,7 +696,7 @@ Status: `done`
 Exit-kriterier:
 
 - 6 spillere/instanser testet, eller klar performance/blocker rapport
-- `MAX_PLAYERS = 6` verificeret
+- 3v3 regression verificeret uden at bruge `MAX_PLAYERS` som hardcoded 6-player runtime cap
 - team score og spawn capacity verificeret
 - FPS/perf readout dokumenteret under load
 
@@ -1215,7 +1215,7 @@ Maal:
 Arbejde:
 
 - start to synlige Godot GUI-instanser via `./run.sh`
-- brug normal lobby-flow: Host Private Match, Join By IP, Ready, Host Start Match
+- brug normal online-flow: Host starter kamp med det samme, klient joiner via IP og loades ind i den igangværende kamp
 - spil mindst `20` minutter samlet 1v1 fra host og client perspektiv
 - test:
   - spawn

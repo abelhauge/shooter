@@ -11,6 +11,7 @@ var _combat_label: Label
 var _feedback_label: Label
 var _match_label: Label
 var _perf_label: Label
+var _players_label: Label
 var _crosshair_root: Control
 var _sniper_scope_overlay: Control
 var _mini_map
@@ -36,6 +37,7 @@ func get_runtime_smoke_summary() -> Dictionary:
 	_update_debug()
 	_update_combat()
 	_update_match()
+	_update_players()
 	_update_perf()
 	_update_minimap()
 	_update_sniper_scope_overlay()
@@ -43,6 +45,7 @@ func get_runtime_smoke_summary() -> Dictionary:
 		"debug_text": _debug_label.text,
 		"combat_text": _combat_label.text,
 		"match_text": _match_label.text,
+		"players_text": _players_label.text,
 		"perf_text": _perf_label.text,
 		"has_feedback_label": _feedback_label != null,
 		"crosshair_visible": _crosshair_root.visible if _crosshair_root != null else false,
@@ -61,6 +64,7 @@ func _process(delta: float) -> void:
 	_update_debug()
 	_update_combat()
 	_update_match()
+	_update_players()
 	_update_perf()
 	_update_minimap()
 	_update_sniper_scope_overlay()
@@ -103,6 +107,14 @@ func _build_ui() -> void:
 		Color(0.015, 0.025, 0.035, 0.70),
 		Color(0.28, 0.78, 0.68, 0.72),
 		15
+	)
+
+	_players_label = _add_readout_panel(
+		Vector2(1030, 280),
+		Vector2(232, 154),
+		Color(0.012, 0.018, 0.026, 0.76),
+		Color(0.42, 0.72, 0.92, 0.72),
+		14
 	)
 
 	_mini_map = HUD_MINIMAP_SCRIPT.new()
@@ -169,6 +181,16 @@ func _update_responsive_layout() -> void:
 			maxf(18.0, viewport_size.x - map_size - 18.0),
 			102.0 if viewport_size.y >= 640.0 else 92.0
 		)
+	if _players_label != null:
+		var players_panel := _players_label.get_parent().get_parent() as PanelContainer
+		var panel_width := 232.0 if viewport_size.x >= 900.0 else 204.0
+		var panel_height := 154.0
+		players_panel.size = Vector2(panel_width, panel_height)
+		players_panel.position = Vector2(
+			maxf(18.0, viewport_size.x - panel_width - 18.0),
+			286.0 if viewport_size.y >= 640.0 else 238.0
+		)
+		_players_label.custom_minimum_size = Vector2(panel_width - 24.0, panel_height - 18.0)
 
 func _add_readout_panel(position: Vector2, size: Vector2, color: Color, border_color: Color, font_size: int) -> Label:
 	var panel := PanelContainer.new()
@@ -261,6 +283,37 @@ func _update_match() -> void:
 		summary["orange_score"],
 		summary["score_limit"],
 	]
+
+func _update_players() -> void:
+	if _players_label == null:
+		return
+	var snapshot := {}
+	if _map_provider != null and is_instance_valid(_map_provider) and _map_provider.has_method("get_hud_player_stats_snapshot"):
+		snapshot = _map_provider.call("get_hud_player_stats_snapshot")
+	var players: Array = snapshot.get("players", [])
+	if players.is_empty():
+		_players_label.text = "PLAYERS\n-"
+		return
+	var lines := ["PLAYERS"]
+	for player in players:
+		var entry: Dictionary = player
+		var team := "B" if int(entry.get("team_id", 0)) == 1 else "O" if int(entry.get("team_id", 0)) == 2 else "-"
+		var marker := "*" if bool(entry.get("is_local", false)) else " "
+		var alive := "" if bool(entry.get("is_alive", true)) else " down"
+		lines.append("%s[%s] %s  %d/%d%s" % [
+			marker,
+			team,
+			_truncate_player_name(String(entry.get("player_name", "Player")), 12),
+			int(entry.get("kills", 0)),
+			int(entry.get("deaths", 0)),
+			alive,
+		])
+	_players_label.text = "\n".join(lines)
+
+func _truncate_player_name(player_name: String, max_length: int) -> String:
+	if player_name.length() <= max_length:
+		return player_name
+	return player_name.substr(0, max_length - 1) + "."
 
 func _update_perf() -> void:
 	_perf_label.text = "FPS: %d\nNodes: %d" % [

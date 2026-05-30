@@ -1135,6 +1135,49 @@ Status: `done`
 
 Purpose: prove a real two-player ENet session can be used through the visible lobby flow.
 
+Note 2026-05-30: the current player-facing flow has changed after this historical P08 capture. `Host` now starts the game immediately, and clients may join the running private match via IP/LAN.
+
+## Immediate Host And Ready-Gated Mid-Game Join
+
+Date: 2026-05-30
+
+- `Host` now starts the hosted game immediately instead of waiting for a separate ready/start lobby.
+- Players may join an in-progress private match, but the host only sends `start_network_match` to newly connected peers after the host's own `GameRoot` is scene-ready.
+- Peers that connect during host loading are kept pending until host readiness; LAN discovery only exposes `in_game` hosts as joinable in the lobby selector.
+- Direct `--join` now waits in the lobby until the host sends the start-match RPC, so command-line joins follow the same host-ready gate.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ python3 tools/runtime_smoke.py lobby --base-port 25080
+SMOKE_PASS lobby-host: lobby host started match with 1 expected peer(s)
+SMOKE_PASS lobby-client: lobby client joined, readied, and entered game
+EXIT=0
+
+$ python3 tools/runtime_smoke.py 2v2 --base-port 25040
+SMOKE_PASS network-game host/client group
+EXIT=0
+
+$ python3 tools/runtime_smoke.py lan-discovery --base-port 25120
+SMOKE_PASS lan-discovery-host
+SMOKE_PASS lan-discovery-client
+EXIT=0
+
+$ ./run.sh -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+EXIT=0
+```
+
+Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
+
+- The lobby remains centered and the `Join` action is visible without overlapping the loadout selector.
+- Weapon preview cards still render in all four rows after the network-flow changes.
+- The update banner, handle field and action row remain readable in the 1280x720 capture.
+
 ### Harness Added
 
 P08 now has dedicated GUI verification modes:
@@ -1580,7 +1623,7 @@ Next phase from `docs/fps-development-plan.md`: P13 3v3 Runtime Pass.
 
 Status: `done`
 
-Purpose: prove the current listen-server ENet flow reaches the v1 maximum player target with six visible Godot instances, and document spawn capacity, team score behavior and performance readout under load.
+Purpose: prove the current listen-server ENet flow reaches the 3v3 regression target with six visible Godot instances, and document spawn capacity, team score behavior and performance readout under load.
 
 ### Six-Instance GUI Run
 
@@ -1613,7 +1656,7 @@ All five client processes exited with `EXIT=0` and the same successful disconnec
 
 - Lobby proof: `docs/verification/screenshots/p13_lobby_3v3.png` shows `Lobby peers: 6. Ready: 6.` before host start.
 - Gameplay/perf proof: `docs/verification/screenshots/p13_3v3_perf.png` shows five remote humanoid player proxies visible at once from a running game viewport.
-- `NetworkConstants.MAX_PLAYERS` is `6`, and the host report confirms `max_players=6`.
+- At the time of the original P13 run, `NetworkConstants.MAX_PLAYERS` was `6`; later private-lobby capacity work removed that as a runtime cap while keeping this six-player regression valid.
 - Team assignment was exactly 3v3: `{ 1: 3, 2: 3 }`.
 - Spawn capacity was verified at runtime as `{ 1: 4, 2: 4 }`, meeting the requirement for three players per team.
 - Team score was verified for both sides: host report ended with `Blue 1, Orange 1`.
@@ -1648,7 +1691,7 @@ EXIT=0
 P13 exit criteria are satisfied:
 
 - Six visible local Godot instances participated in the same 3v3 session.
-- `MAX_PLAYERS = 6` is verified by source and host runtime report.
+- Six-player 3v3 behavior is verified by source and host runtime report; later builds no longer use `MAX_PLAYERS = 6` as a runtime cap.
 - Team score and spawn capacity are verified by the host report.
 - FPS/perf readout is documented under load in both report and screenshot.
 
@@ -2709,7 +2752,8 @@ Date: 2026-05-30
 - If the detected public IP equals Abel's hardcoded host IP, the lobby shows `Host game`.
 - Other machines show a single `Join` button that connects to Abel's saved public IP.
 - Launch args now support `--host` and `--join`; `--join` without an address uses Abel's saved public IP, while `--join=<ip>` still works for tests/manual overrides.
-- Weapon selection is now visual and horizontal: each loadout slot renders selectable weapon cards instead of dropdowns.
+- Weapon selection is now visual and horizontal: each loadout slot renders selectable rotating 3D weapon cards instead of dropdowns.
+- The cards contain only the 3D weapon preview; the selected weapon name and feature summary are shown beside the slot label.
 
 Validation:
 
@@ -2753,5 +2797,249 @@ Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
 
 - The lobby shows one online action for the simulated client state: `Join`.
 - The old `Host Private Match`, `Join By IP`, and `Join Abel` buttons are no longer visible in the player-facing lobby action row.
-- Primary, secondary and artillery slots are horizontal rows of weapon cards; the selected cards use stronger color and a bright border.
-- Loadout card text remains readable in the panel, and the new button does not overlap the status text or right-side briefing panel.
+- Primary, secondary and artillery slots are horizontal rows of textless 3D weapon preview cards; the selected cards use a bright border.
+- Selected slot summaries show weapon name and relevant features beside `PRIMARY`, `SECONDARY`, `MELEE` and `ARTILLERY`.
+- The rendered previews are isolated per card and show distinct silhouettes/colors for guns, knife, grenades/smoke and Redbull.
+- The loadout rows do not overlap the action buttons or selected weapon summaries.
+
+## Lobby Loadout Focus Cleanup
+
+Date: 2026-05-30
+
+- Removed the visible public-IP status line from the lobby while keeping the internal status text available for smoke validation and network callbacks.
+- Removed the right-side `LOADOUT CHECK` briefing panel.
+- Expanded the main lobby panel and increased the weapon preview card sizes so the horizontal weapon selector has more room.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ python3 tools/runtime_smoke.py lobby-validation
+SMOKE_PASS lobby-validation: empty-IP lobby validation status works
+EXIT=0
+
+$ python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+
+$ ./run.sh -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+EXIT=0
+
+$ ./run.sh -- --verification-capture=lan-discovery-lobby
+VERIFICATION_CAPTURE_PASS lan-discovery-lobby
+EXIT=0
+```
+
+Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
+
+- The lobby no longer shows the `LOADOUT CHECK` panel or the public-IP status sentence.
+- The primary, secondary, melee and artillery weapon selectors are wider and taller, with larger 3D preview cards.
+- The `Offline Dev Match` and `Join` actions remain visible below the weapon selector without overlapping the artillery row.
+
+## Lobby Centering
+
+Date: 2026-05-30
+
+- The lobby panel now uses center anchors instead of a fixed upper-left pixel position.
+- The panel keeps its 930x594 layout size, but Godot positions it around the viewport center for fullscreen and smaller captures.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ python3 tools/runtime_smoke.py lobby-validation
+SMOKE_PASS lobby-validation: empty-IP lobby validation status works
+EXIT=0
+
+$ python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+
+$ ./run.sh -- --verification-capture=lan-discovery-lobby
+VERIFICATION_CAPTURE_PASS lan-discovery-lobby
+EXIT=0
+
+$ ./run.sh -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+EXIT=0
+```
+
+Visual QA:
+
+- `docs/verification/screenshots/lan_discovery_lobby.png` shows the lobby panel centered in the fullscreen 3840x2160 viewport.
+- `docs/verification/screenshots/lobby_public_join_button.png` shows the same panel centered in a 1280x720 capture, with balanced left and right margins.
+- Weapon cards, selected weapon summaries, and action buttons remain visible without overlap after the centering change.
+
+## Startup Fullscreen
+
+Date: 2026-05-30
+
+- App startup now switches the game window to Godot fullscreen mode after command-line argument parsing.
+- Headless runs skip the window mode change, so smoke tests and CI validation remain windowless.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ ./run.sh -- --verification-capture=lan-discovery-lobby
+VERIFICATION_CAPTURE_PASS lan-discovery-lobby
+EXIT=0
+
+$ python3 tools/runtime_smoke.py offline
+SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
+EXIT=0
+```
+
+Visual QA for `docs/verification/screenshots/lan_discovery_lobby.png`:
+
+- The captured running lobby viewport is 3840x2160, confirming the startup capture ran in a fullscreen-sized viewport on this display.
+- The lobby UI remains anchored in the upper-left area with no text or button overlap after the fullscreen resize.
+- The horizontal 3D weapon preview cards remain visible and readable in fullscreen, with the selected weapon summaries still beside each slot label.
+
+## macOS GPU Texture Compression
+
+Date: 2026-05-30
+
+- `project.godot` now explicitly uses the desktop `Forward+` renderer and imports both desktop GPU texture compression families: S3TC/BPTC and ETC2/ASTC.
+- The macOS export preset keeps both `texture_format/s3tc_bptc=true` and `texture_format/etc2_astc=true`, so universal/Apple Silicon exports keep GPU-compressed texture support.
+- Static validation now fails if the project import settings or macOS export preset lose those GPU texture compression settings.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ git diff --check
+EXIT=0
+
+$ python3 tools/runtime_smoke.py offline
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M1 (Apple7)
+SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
+EXIT=0
+
+$ godot --headless --import --path "$PWD" && godot --headless --path "$PWD" --export-release "macOS" "build/macos/MovementFPS.zip"
+ERROR: No export template found at the expected path:
+/Users/abel/Library/Application Support/Godot/export_templates/4.6.3.stable/macos.zip
+EXIT=1
+```
+
+The macOS export check reached export template lookup without the earlier ETC2/ASTC configuration error; local completion is blocked only by the missing local `macos.zip` export template.
+
+Visual QA for `docs/verification/screenshots/lan_discovery_lobby.png`:
+
+- The GUI run reports `Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M1`, confirming the local Mac game run is using the GPU renderer path.
+- The fullscreen lobby remains visually stable after the rendering/import settings change, with no black frame or missing UI.
+- The weapon preview cards still render inside the lobby selector, confirming the SubViewport previews survive the Mac GPU renderer path.
+
+## macOS Itch Gatekeeper Fix
+
+Date: 2026-05-30
+
+- The GitHub workflow now builds macOS releases on `macos-latest` instead of exporting the Mac zip from Linux.
+- The exported `.app` bundle is ad-hoc signed with `codesign --sign -` and verified before the zip is repackaged and pushed to itch.
+- Local itch publishing uses the same signing helper when run from macOS.
+- Static validation now fails if the macOS GitHub release workflow loses the macOS runner or signing helper.
+
+Validation:
+
+```text
+$ python3 -m py_compile tools/validate_static.py
+EXIT=0
+
+$ bash -n tools/ci/sign_macos_zip.sh tools/ci/publish_itch_local.sh
+EXIT=0
+
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ ruby -e 'require "yaml"; YAML.load_file(".github/workflows/itch-build.yml"); puts "workflow yaml ok"'
+workflow yaml ok
+EXIT=0
+
+$ git diff --check
+EXIT=0
+```
+
+Signing helper smoke:
+
+```text
+$ tools/ci/sign_macos_zip.sh "$tmpdir/Test.zip"
+Ad-hoc signed macOS app: .../Test.app
+EXIT=0
+```
+
+Distribution note:
+
+- Ad-hoc signing should avoid the fully unsigned/quarantined app path that can surface as `Movement FPS is damaged and can't be opened`.
+- It still is not Apple Developer ID notarization. A direct web download may still require right-click `Open` or Security settings approval on first launch.
+- Fully frictionless first launch from itch direct download requires Apple Developer Program credentials and notarization in CI.
+
+## In-game Itch Update Check
+
+Date: 2026-05-30
+
+- The lobby now checks itch's public `wharf/latest` endpoint for the current platform channel on startup.
+- macOS checks channel `mac`; Windows checks channel `windows`.
+- If itch reports a newer `latest` user-version than `application/config/version`, the lobby shows an update banner with an `Update` button.
+- The update button opens `https://abelhauge.itch.io/shooter`, letting the itch app/browser handle install and update safely.
+
+Validation:
+
+```text
+$ curl -fsSL "https://itch.io/api/1/x/wharf/latest?target=abelhauge/shooter&channel_name=mac"
+{"latest":"0.1.3"}
+EXIT=0
+
+$ curl -fsSL "https://itch.io/api/1/x/wharf/latest?target=abelhauge/shooter&channel_name=windows"
+{"latest":"0.1.3"}
+EXIT=0
+
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ python3 tools/runtime_smoke.py lobby-validation
+SMOKE_PASS lobby-validation: empty-IP lobby validation status works
+EXIT=0
+
+$ python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+
+$ python3 tools/runtime_smoke.py offline
+SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
+EXIT=0
+
+$ ./run.sh -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+EXIT=0
+
+$ ./run.sh -- --verification-capture=lan-discovery-lobby
+VERIFICATION_CAPTURE_PASS lan-discovery-lobby
+EXIT=0
+```
+
+Visual QA:
+
+- `docs/verification/screenshots/lobby_public_join_button.png` shows the forced update banner in the 1280x720 lobby without clipping the bottom action buttons.
+- The banner text includes the latest version and current version, and the `Update` button is visible on the right side.
+- Weapon rows, summaries and action buttons remain readable with the banner visible.
+- `docs/verification/screenshots/lan_discovery_lobby.png` shows the normal lobby state remains centered and uncluttered when no update banner is visible during capture.
+
+Scope note:
+
+- Full automatic download, unpack and restart is not implemented in this pass because itch's public latest-version endpoint returns only the latest user-version, not a safe direct download artifact.
+- Safe self-updating for downloaded desktop apps should be implemented through a separate launcher/updater process or itch app integration so the running executable is not replacing itself.

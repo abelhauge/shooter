@@ -33,7 +33,7 @@ Status: `Låst`
 - Platform: native desktop-spil til `Mac` og `PC`
 - Kamera: first-person
 - Primær oplevelse: online arena shooter med movement-fokus
-- Holdstørrelser som produktmål: `1v1`, `2v2` og `3v3`
+- Holdstørrelser som produktmål: `1v1`, `2v2` og `3v3`, men private lobbies må ikke afvise ekstra spillere før kampstart alene pga. en hardcoded 3v3-grænse
 - Første shipping-scope: få modes, én stærk map, høj movement-kvalitet
 - Første implementeringsmål: start småt og udvid holdstørrelse gradvist
 
@@ -90,7 +90,7 @@ Dette er vigtigt:
 | D-001 | Genre | Låst | 1st person 3D FPS |
 | D-002 | Fokus | Låst | Movement er spillets hovedidentitet |
 | D-003 | Multiplayer | Låst | Online spil med invite-flow |
-| D-004 | Holdstørrelse | Låst | Produktmålet er 1v1, 2v2 og 3v3 |
+| D-004 | Holdstørrelse | Låst | Produktmålet er 1v1, 2v2 og 3v3; private dev/friend lobbies har ingen spil-lagets hardcoded 6-player cap |
 | D-005 | Lobby | Låst | Man kan invitere andre til at spille med sig |
 | D-006 | Friendly battle | Låst | Man kan invitere folk til at spille imod sig |
 | D-007 | Loadout | Låst | Spilleren vælger våben før kampstart |
@@ -104,13 +104,13 @@ Dette er vigtigt:
 | D-015 | Placeholder-politik | Låst | Placeholder-figurer og placeholder-våben er acceptable kortvarigt |
 | D-016 | Base health | Låst | 100 HP som første balance baseline |
 | D-017 | Invite-kompleksitet | Låst | Første version skal være så simpel som muligt |
-| D-019 | Første mode | Låst | Én simpel respawn-baseret skirmish/team deathmatch, der kan skaleres mellem 1v1, 2v2 og 3v3 |
+| D-019 | Første mode | Låst | Én simpel respawn-baseret skirmish/team deathmatch, der mindst kan skaleres mellem 1v1, 2v2 og 3v3 |
 | D-020 | Match structure | Låst | Time limit + score limit, ikke elimination-runder i v1 |
-| D-021 | Multiplayer rollout | Låst | Start med 1v1, udvid til 2v2, derefter 3v3 |
+| D-021 | Multiplayer rollout | Låst | Start med 1v1, udvid til 2v2, derefter 3v3; 3v3 er test-target, ikke matchmaking-cap |
 | D-022 | Netværksmodel v1 | Låst | Host/client listen-server over ENet, host kan spille med, join via IP/LAN, ingen backend-room-service i v1 |
 | D-023 | V1 input | Låst | Keyboard + mus, ingen controller-support i v1 |
 | D-024 | V1 loadout flow | Låst | Loadout vælges før kampstart og er låst under kampen |
-| D-025 | V1 kampregler | Låst | Respawn delay, score limit, time limit, ingen spectators og ingen join mid-match |
+| D-025 | V1 kampregler | Låst | Respawn delay, score limit, time limit, ingen spectators; spillere må joine igangværende private kampe |
 | D-026 | Team model | Låst | To hold bruges i alle formater, også 1v1 |
 | D-027 | V1 simplificeringer | Låst | Ingen accounts, ingen progression, ingen pickups, ingen weapon drops, ingen crouch-system udenfor slide |
 | D-028 | Taser gun rolle | Låst | Secondary utility der stunner i 2 sek ved impact og har 5 sek cooldown |
@@ -194,7 +194,7 @@ Den simpleste og mest realistiske første mode er:
 - respawns i stedet for elimination-runder
 - fast time limit
 - fast score limit
-- samme kerneflow for `1v1`, `2v2` og `3v3`
+- samme kerneflow for `1v1`, `2v2` og `3v3`, med mulighed for at flere spillere i private lobbies deltager før kampstart
 
 Begrundelse:
 
@@ -212,7 +212,7 @@ Begrundelse:
 - Time limit: `8 minutter`
 - Score limit: `20 kills`
 - Friendly fire: `off`
-- Join mid-match: `off`
+- Join mid-match: `on` for private host/client-kampe
 - Spectators: `off`
 - Ammo og charges resettes ved respawn
 - Loadout kan ikke ændres midt i kampen
@@ -221,9 +221,9 @@ Begrundelse:
 ### Kampflow v1
 
 1. Host opretter kamp.
-2. Spillere joiner lobby via IP/LAN.
-3. Spillere vælger loadout.
-4. Host starter kampen.
+2. Host starter kampen med det samme.
+3. Spillere joiner via IP/LAN før eller under kampen.
+4. Spillere vælger loadout før de joiner.
 5. Kampen kører til score limit eller time limit.
 6. Resultatskærm viser vinder og mulighed for rematch eller retur til lobby.
 

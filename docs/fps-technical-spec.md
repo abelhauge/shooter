@@ -56,12 +56,12 @@ Regler:
 - fremtidige agenter må ikke erstatte denne kontrakt med editor-only kørsel
 - scriptet må gerne udvides over tid, men kommandoerne skal forblive `./run.sh` og `run.cmd`
 - scriptet skal starte Godot-projektet fra repo-root uden at brugeren først skal vælge en scene manuelt
-- launch-scriptet skal som default forsøge at synce den aktive git-branch med GitHub før Godot starter:
-  - auto-stage og commit lokale ændringer med en merge-/sync-commit
-  - `git pull --no-rebase --no-edit` fra branchens upstream
-  - `git push` tilbage til upstream
-- `SHOOTER_SKIP_GIT_SYNC=1 ./run.sh` og `set "SHOOTER_SKIP_GIT_SYNC=1" && run.cmd` må bruges til nød/CI/offline-kørsler, hvor launch skal testes uden netværks- eller git-sideeffekter
+- launch-scriptet må ikke committe, pull'e eller pushe; almindelig game/editor-start skal være uden git-sideeffekter
+- publicering til GitHub skal ske eksplicit med `./udgiv.sh`, som auto-stager, committer, puller og pusher den aktive branch
 - `install.sh` og `install.cmd` skal kunne verificere lokale dependencies og bootstrappe Godot-import/cache på henholdsvis Unix/macOS/Linux og Windows
+- desktop runtime skal bruge Godots `Forward+` renderer; paa macOS betyder det Metal-rendering i normale GUI-runs
+- macOS-export skal beholde GPU-komprimerede texture formats slået til: `texture_format/etc2_astc=true` for Apple Silicon/universal exports og `texture_format/s3tc_bptc=true` som desktop fallback; `project.godot` skal importere begge VRAM compression families
+- GitHub macOS releases skal bygges paa en macOS runner og mindst ad-hoc signes foer upload til itch; fuld friktionsfri Mac-download kraever Apple Developer ID signing og notarization
 
 ## Anbefalet Godot-projektstruktur
 
@@ -330,7 +330,7 @@ Ansvar:
 - Target footprint: ca. `85m x 65m`
 - Maks gameplay-højde: ca. `28m`
 - Primært kampareal: `55m x 40m`
-- Matchformat designet omkring: `1v1`, men skalerbart til `2v2` og `3v3`
+- Matchformat designet omkring: `1v1`, men skalerbart til `2v2` og `3v3`; runtime må ikke have en hardcoded 6-player cap
 
 ## Maplag
 
@@ -502,13 +502,13 @@ V1-værdier:
 
 - `mode_id = team_skirmish`
 - `team_count = 2`
-- `players_per_team = 3` som maksimumkapacitet
+- `players_per_team = 0`, hvor `0` betyder ingen hardcoded holdcap; hold balanceres løbende mellem Blue og Orange
 - `respawn_delay_sec = 3.0`
 - `spawn_protection_sec = 1.0`
 - `time_limit_sec = 480.0`
 - `score_limit = 20`
 - `friendly_fire = false`
-- `allow_join_mid_match = false`
+- `allow_join_mid_match = true`
 - `allow_spectators = false`
 - `allow_loadout_changes_mid_match = false`
 
@@ -625,10 +625,20 @@ V1 må bruge en lille lokal discovery-kanal til at finde private LAN-hosts uden 
 
 - Hostens ENet listen-server forbliver den autoritative matchforbindelse.
 - Mens hosten står i lobby, annonceres matchen via UDP multicast på en separat discovery-port.
-- Discovery-payload må kun indeholde lobby metadata som protocol version, host name, ENet-port, max players og lobby state.
-- Discovery må stoppe, når matchen starter, fordi v1 ikke tillader join mid-match.
+- Discovery-payload må kun indeholde lobby metadata som protocol version, host name, ENet-port, advertised capacity og lobby state.
+- Discovery må fortsætte, når matchen starter, fordi v1 tillader join mid-match i private kampe.
 - Manual `Join By IP` skal bevares som fallback, hvis multicast eller lokal firewall blokerer discovery.
 - Discovery må ikke bruge ekstern backend, relay, NAT traversal eller central matchmaking.
+
+## Multiplayer capacity
+
+- Spillet må ikke begrænse private pre-match lobbies til 6 spillere.
+- Host-knappen starter en hostet kamp med det samme; der er ikke længere et obligatorisk ready/start-lobbytrin.
+- Nye peers der forbinder efter kampstart får en targeted `start_network_match` RPC, loader `GameRoot`, sender scene-ready tilbage til hosten og får derefter respawn/snapshot.
+- Nye peers må ikke sendes ind i kampen, før hostens egen `GameRoot` er scene-ready; peers der forbinder under host-load holdes pending, og LAN discovery viser først hosten som `in_game`, når hosten er klar.
+- `NetworkConstants.MAX_ENET_CLIENTS` følger Godots ENet-loft på `4095` samtidige klienter; `MAX_PLAYERS` inkluderer hosten og er derfor `4096`.
+- Den reelle praktiske grænse er hostens maskine, netværk, map/spawn-readability og performance, ikke en 3v3-regel i gameplay-data.
+- P13 3v3 er fortsat en regressionstest for seks instanser, men den må ikke bruges som runtime-cap.
 
 ## Simulation
 

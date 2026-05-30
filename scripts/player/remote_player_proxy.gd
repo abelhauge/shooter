@@ -44,6 +44,7 @@ var active_slot: StringName = &"primary"
 var team_id := 0
 var health := 100.0
 var is_alive := true
+var player_name := "Player"
 
 @onready var label: Label3D = $Label3D
 @onready var body: MeshInstance3D = $Body
@@ -90,9 +91,17 @@ func _process(delta: float) -> void:
 	_previous_position = global_position
 	_movement_animation_hold_sec = maxf(0.0, _movement_animation_hold_sec - delta)
 	visible = is_alive
-	label.text = "Peer %d  T%d\n%s\n%s  %.0f HP" % [peer_id, team_id, String(movement_state), String(active_slot), health]
-	label.visible = show_debug_label
+	if show_debug_label:
+		label.text = "%s  #%d  T%d\n%s\n%s  %.0f HP" % [player_name, peer_id, team_id, String(movement_state), String(active_slot), health]
+	else:
+		label.text = player_name
+	label.visible = is_alive and player_name != ""
 	_update_animation()
+
+func set_player_name(next_player_name: String) -> void:
+	player_name = _sanitize_player_name(next_player_name)
+	if label != null:
+		label.text = player_name
 
 func apply_snapshot(position: Vector3, yaw: float, pitch: float, state: StringName, slot: StringName) -> void:
 	if target_position.distance_to(position) > 0.08:
@@ -117,6 +126,7 @@ func apply_combat_state(next_team_id: int, next_health: float, next_is_alive: bo
 func get_runtime_summary() -> Dictionary:
 	return {
 		"peer_id": peer_id,
+		"player_name": player_name,
 		"team_id": team_id,
 		"team_name": TEAM_NAME_BY_ID.get(team_id, "unknown"),
 		"source_asset_path": _avatar_source_path,
@@ -343,3 +353,22 @@ func _should_skip_remote_visuals() -> bool:
 		if arg == "--verification-capture=p12-client" or arg == "--verification-capture=p13-client":
 			return true
 	return false
+
+func _sanitize_player_name(raw_name: String) -> String:
+	var sanitized := ""
+	for index in range(raw_name.length()):
+		var character := raw_name.substr(index, 1)
+		if character >= "a" and character <= "z":
+			sanitized += character
+		elif character >= "A" and character <= "Z":
+			sanitized += character
+		elif character >= "0" and character <= "9":
+			sanitized += character
+		elif character == "_" or character == "-":
+			sanitized += character
+		elif character == " " and sanitized.length() > 0 and not sanitized.ends_with(" "):
+			sanitized += character
+		if sanitized.length() >= 18:
+			break
+	sanitized = sanitized.strip_edges()
+	return sanitized if sanitized != "" else "Player"

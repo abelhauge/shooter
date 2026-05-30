@@ -35,6 +35,8 @@ var _rooftop_config: Resource
 var _rooftop_fog_visual_root: Node3D
 var _balance_dummy: DummyTarget
 var _dev_balance_dummy_enabled := false
+var _local_player_name := "Player"
+var _network_player_names: Dictionary = {1: "Player"}
 
 func _ready() -> void:
 	_load_network_weapon_definitions()
@@ -82,6 +84,21 @@ func set_selected_loadout(loadout: LoadoutDefinition) -> void:
 	if local_player != null:
 		local_player.get_weapon_controller().set_loadout_definition(selected_loadout)
 
+func set_local_player_name(player_name: String) -> void:
+	_local_player_name = _sanitize_player_name(player_name)
+	if network_session != null:
+		_network_player_names[network_session.local_peer_id()] = _local_player_name
+	else:
+		_network_player_names[1] = _local_player_name
+	_update_local_player_state_name()
+
+func set_network_player_names(player_names: Dictionary) -> void:
+	for peer_id in player_names.keys():
+		var sanitized := _sanitize_player_name(String(player_names[peer_id]))
+		_network_player_names[int(peer_id)] = sanitized
+		if _network_player_states.has(peer_id):
+			(_network_player_states[peer_id] as Dictionary)["player_name"] = sanitized
+
 func set_dev_balance_dummy_enabled(enabled: bool) -> void:
 	_dev_balance_dummy_enabled = enabled
 	if not is_node_ready():
@@ -109,12 +126,66 @@ func get_runtime_smoke_summary() -> Dictionary:
 		"rooftop_ground_kill_height_y": _rooftop_config.ground_kill_height_y if _rooftop_config != null else 0.0,
 	}
 
+func smoke_seed_remote_player_for_hud(peer_id: int, player_name: String, team_id: int, kills: int, deaths: int) -> void:
+	if peer_id <= 1:
+		return
+	var local_state := _ensure_network_player_state(1)
+	local_state["player_name"] = _local_player_name
+	local_state["team_id"] = 1
+	local_state["position"] = local_player.global_position if local_player != null else Vector3.ZERO
+	local_state["is_alive"] = local_player == null or local_player.get_health_component().is_alive
+	var state := _ensure_network_player_state(peer_id)
+	state["player_name"] = _sanitize_player_name(player_name)
+	state["team_id"] = team_id
+	state["kills"] = kills
+	state["deaths"] = deaths
+	state["health"] = 100.0
+	state["is_alive"] = true
+	var forward := -local_player.global_transform.basis.z if local_player != null else Vector3.FORWARD
+	forward.y = 0.0
+	if forward.length_squared() <= 0.001:
+		forward = Vector3.FORWARD
+	state["position"] = local_player.global_position + forward.normalized() * 4.0 if local_player != null else Vector3(0.0, 18.0, 0.0)
+	var proxy := _ensure_remote_proxy(peer_id)
+	proxy.set_player_name(String(state["player_name"]))
+	proxy.apply_snapshot(state["position"], 0.0, 0.0, &"idle", &"primary")
+	proxy.apply_combat_state(team_id, 100.0, true)
+
 func _build_network_team_counts() -> Dictionary:
 	var team_counts := {}
 	for state in _network_player_states.values():
 		var team_id := int(state.get("team_id", 0))
 		team_counts[team_id] = int(team_counts.get(team_id, 0)) + 1
 	return team_counts
+
+func _sanitize_player_name(raw_name: String) -> String:
+	var sanitized := ""
+	for index in range(raw_name.length()):
+		var character := raw_name.substr(index, 1)
+		if character >= "a" and character <= "z":
+			sanitized += character
+		elif character >= "A" and character <= "Z":
+			sanitized += character
+		elif character >= "0" and character <= "9":
+			sanitized += character
+		elif character == "_" or character == "-":
+			sanitized += character
+		elif character == " " and sanitized.length() > 0 and not sanitized.ends_with(" "):
+			sanitized += character
+		if sanitized.length() >= 18:
+			break
+	sanitized = sanitized.strip_edges()
+	return sanitized if sanitized != "" else "Player"
+
+func _update_local_player_state_name() -> void:
+	if network_session == null:
+		if _network_player_states.has(1):
+			(_network_player_states[1] as Dictionary)["player_name"] = _local_player_name
+		return
+	var local_peer_id := network_session.local_peer_id()
+	_network_player_names[local_peer_id] = _local_player_name
+	if _network_player_states.has(local_peer_id):
+		(_network_player_states[local_peer_id] as Dictionary)["player_name"] = _local_player_name
 
 func _build_spawn_capacity_by_team() -> Dictionary:
 	var capacity := {}
@@ -2647,37 +2718,43 @@ func run_p12_2v2_checks() -> Dictionary:
 func run_p13_3v3_checks() -> Dictionary:
 	if network_session == null or not network_session.is_active() or not multiplayer.is_server():
 		return {"ok": false, "error": "P13 host checks require active server"}
+	const REQUIRED_PLAYERS := 6
+	const REQUIRED_REMOTE_PLAYERS := 5
+	const REQUIRED_PER_TEAM := 3
 	var remote_report := _build_p06_remote_report()
 	var team_counts := _build_network_team_counts()
 	var remote_ready := (
-		_network_player_states.size() >= NetworkConstants.MAX_PLAYERS
-		and int(remote_report.get("remote_proxy_count", 0)) >= 5
-		and int(remote_report.get("humanoid_remote_count", 0)) >= 5
+		_network_player_states.size() >= REQUIRED_PLAYERS
+		and int(remote_report.get("remote_proxy_count", 0)) >= REQUIRED_REMOTE_PLAYERS
+		and int(remote_report.get("humanoid_remote_count", 0)) >= REQUIRED_REMOTE_PLAYERS
 		and int(remote_report.get("fallback_remote_count", 0)) == 0
-		and int(remote_report.get("synced_remote_count", 0)) >= 5
+		and int(remote_report.get("synced_remote_count", 0)) >= REQUIRED_REMOTE_PLAYERS
 	)
 	if not remote_ready:
 		return {
 			"ok": false,
 			"pending": true,
-			"max_players": NetworkConstants.MAX_PLAYERS,
+			"capacity_players": NetworkConstants.MAX_PLAYERS,
+			"required_players": REQUIRED_PLAYERS,
 			"team_counts": team_counts,
 			"remote_report": remote_report,
 		}
-	if int(team_counts.get(1, 0)) != 3 or int(team_counts.get(2, 0)) != 3:
+	if int(team_counts.get(1, 0)) != REQUIRED_PER_TEAM or int(team_counts.get(2, 0)) != REQUIRED_PER_TEAM:
 		return {
 			"ok": false,
 			"error": "P13 expected 3v3 team assignment",
-			"max_players": NetworkConstants.MAX_PLAYERS,
+			"capacity_players": NetworkConstants.MAX_PLAYERS,
+			"required_players": REQUIRED_PLAYERS,
 			"team_counts": team_counts,
 			"remote_report": remote_report,
 		}
-	var spawn_report := _build_network_spawn_report(NetworkConstants.MAX_PLAYERS, 3)
+	var spawn_report := _build_network_spawn_report(REQUIRED_PLAYERS, REQUIRED_PER_TEAM)
 	if not bool(spawn_report.get("ok", false)):
 		return {
 			"ok": false,
 			"error": "P13 spawn capacity report failed",
-			"max_players": NetworkConstants.MAX_PLAYERS,
+			"capacity_players": NetworkConstants.MAX_PLAYERS,
+			"required_players": REQUIRED_PLAYERS,
 			"team_counts": team_counts,
 			"spawn_report": spawn_report,
 			"remote_report": remote_report,
@@ -2687,7 +2764,8 @@ func run_p13_3v3_checks() -> Dictionary:
 		return {
 			"ok": false,
 			"error": blue_score_result.get("error", "P13 blue team score check failed"),
-			"max_players": NetworkConstants.MAX_PLAYERS,
+			"capacity_players": NetworkConstants.MAX_PLAYERS,
+			"required_players": REQUIRED_PLAYERS,
 			"team_counts": team_counts,
 			"spawn_report": spawn_report,
 			"blue_score_result": blue_score_result,
@@ -2698,7 +2776,8 @@ func run_p13_3v3_checks() -> Dictionary:
 		return {
 			"ok": false,
 			"error": orange_score_result.get("error", "P13 orange team score check failed"),
-			"max_players": NetworkConstants.MAX_PLAYERS,
+			"capacity_players": NetworkConstants.MAX_PLAYERS,
+			"required_players": REQUIRED_PLAYERS,
 			"team_counts": team_counts,
 			"spawn_report": spawn_report,
 			"blue_score_result": blue_score_result,
@@ -2714,7 +2793,8 @@ func run_p13_3v3_checks() -> Dictionary:
 	return {
 		"ok": true,
 		"arena": "arena_downtown_01_art",
-		"max_players": NetworkConstants.MAX_PLAYERS,
+		"capacity_players": NetworkConstants.MAX_PLAYERS,
+		"required_players": REQUIRED_PLAYERS,
 		"network_player_count": _network_player_states.size(),
 		"host_peer_id": network_session.local_peer_id(),
 		"team_counts": final_team_counts,
@@ -4173,6 +4253,40 @@ func get_hud_map_snapshot() -> Dictionary:
 		"enemies": _get_hud_map_enemies(local_team_id),
 	}
 
+func get_hud_player_stats_snapshot() -> Dictionary:
+	var players := []
+	var local_peer_id := network_session.local_peer_id() if network_session != null and network_session.is_active() else 1
+	if (network_session != null and network_session.is_active()) or not _network_player_states.is_empty():
+		for peer_id in _network_player_states.keys():
+			var state: Dictionary = _network_player_states[peer_id]
+			players.append({
+				"peer_id": int(peer_id),
+				"player_name": String(state.get("player_name", "Peer %d" % int(peer_id))),
+				"team_id": int(state.get("team_id", 0)),
+				"kills": int(state.get("kills", 0)),
+				"deaths": int(state.get("deaths", 0)),
+				"is_local": int(peer_id) == local_peer_id,
+				"is_alive": bool(state.get("is_alive", false)),
+			})
+	else:
+		players.append({
+			"peer_id": 1,
+			"player_name": _local_player_name,
+			"team_id": 1,
+			"kills": match_director.blue_score if match_director != null else 0,
+			"deaths": 0,
+			"is_local": true,
+			"is_alive": local_player != null and local_player.get_health_component().is_alive,
+		})
+	players.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_team := int(a.get("team_id", 0))
+		var b_team := int(b.get("team_id", 0))
+		if a_team != b_team:
+			return a_team < b_team
+		return int(a.get("peer_id", 0)) < int(b.get("peer_id", 0))
+	)
+	return {"players": players}
+
 func _get_local_team_id() -> int:
 	if network_session != null and network_session.is_active():
 		var local_peer_id := network_session.local_peer_id()
@@ -4350,6 +4464,7 @@ func _ensure_remote_proxy(peer_id: int) -> RemotePlayerProxy:
 		return remote_proxies[peer_id]
 	var proxy: RemotePlayerProxy = REMOTE_PROXY_SCENE.instantiate()
 	proxy.peer_id = peer_id
+	proxy.set_player_name(String(_network_player_names.get(peer_id, "Peer %d" % peer_id)))
 	proxy.name = "RemotePlayerProxy_%d" % peer_id
 	players_root.add_child(proxy)
 	remote_proxies[peer_id] = proxy
@@ -4371,11 +4486,14 @@ func _load_network_weapon_definitions() -> void:
 func _activate_network_match() -> void:
 	local_player.get_weapon_controller().set_multiplayer_combat_enabled(true)
 	var peer_id := network_session.local_peer_id()
+	_network_player_names[peer_id] = _local_player_name
 	set_network_peer_scene_ready(peer_id, true)
 	_ensure_network_player_state(peer_id)
 	if multiplayer.is_server():
 		_respawn_network_peer(peer_id)
 		_send_authoritative_snapshot()
+	elif network_session.is_connection_ready():
+		submit_player_identity.rpc_id(1, _local_player_name)
 
 func _on_network_hosting_started(_port: int) -> void:
 	_activate_network_match()
@@ -4415,9 +4533,11 @@ func _ensure_network_player_state(peer_id: int) -> Dictionary:
 	if _network_player_states.has(peer_id):
 		return _network_player_states[peer_id]
 	var team_id := _assign_team_for_peer(peer_id)
+	var local_peer_id := network_session.local_peer_id() if network_session != null and network_session.is_active() else 1
+	var default_player_name := _local_player_name if peer_id == local_peer_id else "Peer %d" % peer_id
 	var state := {
 		"peer_id": peer_id,
-		"player_name": "Peer %d" % peer_id,
+		"player_name": _network_player_names.get(peer_id, default_player_name),
 		"team_id": team_id,
 		"selected_loadout_id": "default_v1",
 		"is_ready": false,
@@ -4437,6 +4557,7 @@ func _ensure_network_player_state(peer_id: int) -> Dictionary:
 		"stun_remaining_sec": 0.0,
 	}
 	_network_player_states[peer_id] = state
+	_network_player_names[peer_id] = String(state["player_name"])
 	_network_weapon_states[peer_id] = _create_authoritative_weapon_states()
 	return state
 
@@ -4451,10 +4572,11 @@ func _assign_team_for_peer(peer_id: int) -> int:
 		elif int(state["team_id"]) == 2:
 			orange_count += 1
 	var max_per_team := match_director.rules.players_per_team
-	if blue_count >= max_per_team and orange_count < max_per_team:
-		return 2
-	if orange_count >= max_per_team and blue_count < max_per_team:
-		return 1
+	if max_per_team > 0:
+		if blue_count >= max_per_team and orange_count < max_per_team:
+			return 2
+		if orange_count >= max_per_team and blue_count < max_per_team:
+			return 1
 	return 1 if blue_count <= orange_count else 2
 
 func _create_authoritative_weapon_states() -> Dictionary:
@@ -4870,7 +4992,9 @@ func _apply_match_snapshot(snapshot: Dictionary) -> void:
 	var local_peer_id := network_session.local_peer_id() if network_session != null and network_session.is_active() else 1
 	for state in snapshot.get("players", []):
 		var peer_id := int(state["peer_id"])
+		state["player_name"] = _sanitize_player_name(String(state.get("player_name", "Peer %d" % peer_id)))
 		_network_player_states[peer_id] = state
+		_network_player_names[peer_id] = String(state["player_name"])
 		if state.has("weapon_states"):
 			_network_weapon_states[peer_id] = state["weapon_states"]
 		if peer_id == local_peer_id:
@@ -4880,6 +5004,7 @@ func _apply_match_snapshot(snapshot: Dictionary) -> void:
 				local_player.get_weapon_controller().apply_authoritative_weapon_states(state["weapon_states"])
 		else:
 			var proxy := _ensure_remote_proxy(peer_id)
+			proxy.set_player_name(String(state["player_name"]))
 			var proxy_position: Vector3 = state["position"]
 			var proxy_state := StringName(str(state["movement_state"]))
 			var proxy_slot := StringName(str(state["current_slot"]))
@@ -4905,6 +5030,21 @@ func submit_player_transform(position: Vector3, yaw: float, pitch: float, state:
 	player_state["current_slot"] = slot
 	_apply_remote_snapshot(sender, position, yaw, pitch, state, slot)
 	_send_player_transform_to_ready_peers(sender, position, yaw, pitch, state, slot)
+
+@rpc("any_peer", "reliable")
+func submit_player_identity(player_name: String) -> void:
+	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0:
+		return
+	var sanitized := _sanitize_player_name(player_name)
+	_network_player_names[sender] = sanitized
+	var state := _ensure_network_player_state(sender)
+	state["player_name"] = sanitized
+	if remote_proxies.has(sender):
+		(remote_proxies[sender] as RemotePlayerProxy).set_player_name(sanitized)
+	_send_authoritative_snapshot()
 
 @rpc("authority", "unreliable")
 func receive_player_transform(peer_id: int, position: Vector3, yaw: float, pitch: float, state: StringName, slot: StringName) -> void:

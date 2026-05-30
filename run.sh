@@ -10,50 +10,6 @@ if [[ ! -f "$PROJECT_FILE" ]]; then
   exit 1
 fi
 
-sync_github_before_run() {
-  if [[ "${SHOOTER_SKIP_GIT_SYNC:-0}" == "1" ]]; then
-    echo "Skipping GitHub sync because SHOOTER_SKIP_GIT_SYNC=1." >&2
-    return
-  fi
-  if ! command -v git >/dev/null 2>&1; then
-    echo "GitHub sync skipped: git was not found in PATH." >&2
-    return
-  fi
-  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "GitHub sync skipped: $ROOT_DIR is not a git worktree." >&2
-    return
-  fi
-
-  local branch
-  branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
-  if [[ "$branch" == "HEAD" ]]; then
-    echo "GitHub sync skipped: detached HEAD has no upstream branch." >&2
-    return
-  fi
-
-  local upstream
-  upstream="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-  if [[ -z "$upstream" ]]; then
-    echo "GitHub sync skipped: branch '$branch' has no upstream." >&2
-    return
-  fi
-
-  echo "Syncing GitHub branch '$branch' with '$upstream'..." >&2
-  if ! git -C "$ROOT_DIR" diff --quiet \
-    || ! git -C "$ROOT_DIR" diff --cached --quiet \
-    || [[ -n "$(git -C "$ROOT_DIR" ls-files --others --exclude-standard)" ]]; then
-    git -C "$ROOT_DIR" add -A
-    if ! git -C "$ROOT_DIR" diff --cached --quiet; then
-      git -C "$ROOT_DIR" commit -m "Auto sync before run"
-    fi
-  fi
-
-  git -C "$ROOT_DIR" pull --no-rebase --no-edit
-  git -C "$ROOT_DIR" push
-}
-
-sync_github_before_run
-
 if [[ -n "${GODOT_BIN:-}" ]]; then
   if [[ "$GODOT_BIN" == */* && ! -x "$GODOT_BIN" ]]; then
     echo "GODOT_BIN is set but is not executable: $GODOT_BIN" >&2
@@ -157,4 +113,36 @@ elif [[ "$BOOTSTRAP_CACHE" -eq 1 && ! -f "$ROOT_DIR/.godot/global_script_class_c
   "$GODOT_BIN" --headless --import --path "$ROOT_DIR"
 fi
 
-exec "$GODOT_BIN" --path "$ROOT_DIR" "$@"
+GODOT_ARGS=()
+APP_ARGS=()
+SAW_USER_ARGS_DELIMITER=0
+for arg in "$@"; do
+  if [[ "$SAW_USER_ARGS_DELIMITER" -eq 1 ]]; then
+    APP_ARGS+=("$arg")
+    continue
+  fi
+  if [[ "$arg" == "--" ]]; then
+    SAW_USER_ARGS_DELIMITER=1
+    continue
+  fi
+  case "$arg" in
+    --host|--join|--join=*|--port=*|--name=*|--smoke-*|--verification-capture=*|--p06-driver-pose|--p07-*|--p08-*|--p10a-*|--p11-*|--p12-*|--p13-*|--p14-*)
+      APP_ARGS+=("$arg")
+      ;;
+    *)
+      GODOT_ARGS+=("$arg")
+      ;;
+  esac
+done
+
+if [[ "${#APP_ARGS[@]}" -gt 0 ]]; then
+  if [[ "${#GODOT_ARGS[@]}" -gt 0 ]]; then
+    exec "$GODOT_BIN" --path "$ROOT_DIR" "${GODOT_ARGS[@]}" -- "${APP_ARGS[@]}"
+  fi
+  exec "$GODOT_BIN" --path "$ROOT_DIR" -- "${APP_ARGS[@]}"
+fi
+
+if [[ "${#GODOT_ARGS[@]}" -gt 0 ]]; then
+  exec "$GODOT_BIN" --path "$ROOT_DIR" "${GODOT_ARGS[@]}"
+fi
+exec "$GODOT_BIN" --path "$ROOT_DIR"

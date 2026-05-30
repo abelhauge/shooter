@@ -28,11 +28,11 @@ func _ready() -> void:
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
-func host(port := NetworkConstants.DEFAULT_PORT, max_players := NetworkConstants.MAX_PLAYERS) -> Error:
+func host(port := NetworkConstants.DEFAULT_PORT, max_clients := NetworkConstants.MAX_ENET_CLIENTS) -> Error:
 	close()
 	stop_lan_discovery()
 	var peer := ENetMultiplayerPeer.new()
-	var error := peer.create_server(port, max_players - 1)
+	var error := peer.create_server(port, clampi(max_clients, 1, NetworkConstants.MAX_ENET_CLIENTS))
 	if error != OK:
 		connection_failed.emit("Could not host ENet server on port %d: %s" % [port, error_string(error)])
 		return error
@@ -79,10 +79,10 @@ func start_lan_discovery() -> Error:
 	lan_hosts_changed.emit(_lan_discovery.get_hosts())
 	return error
 
-func start_lan_advertising(port := NetworkConstants.DEFAULT_PORT) -> void:
+func start_lan_advertising(port := NetworkConstants.DEFAULT_PORT, state := "lobby") -> void:
 	if _lan_discovery == null:
 		return
-	_lan_discovery.start_advertising(port, _build_lan_host_name())
+	_lan_discovery.start_advertising(port, _build_lan_host_name(), state)
 
 func stop_lan_discovery() -> void:
 	if _lan_discovery == null:

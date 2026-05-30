@@ -13,6 +13,7 @@ var _advertise_elapsed := 0.0
 var _host_id := ""
 var _host_name := ""
 var _host_port := 0
+var _host_state := "lobby"
 var _joined_interfaces: Array[String] = []
 var _hosts_by_id: Dictionary = {}
 
@@ -26,10 +27,11 @@ func _process(delta: float) -> void:
 		_poll_listener()
 		_expire_hosts()
 
-func start_advertising(port: int, host_name: String) -> void:
+func start_advertising(port: int, host_name: String, state := "lobby") -> void:
 	stop()
 	_host_port = port
 	_host_name = host_name
+	_host_state = state
 	_host_id = "%s-%d-%d" % [OS.get_unique_id(), Time.get_ticks_usec(), randi()]
 	_advertiser = PacketPeerUDP.new()
 	_advertiser.set_broadcast_enabled(true)
@@ -85,7 +87,7 @@ func _send_advertisement() -> void:
 		"name": _host_name,
 		"port": _host_port,
 		"max_players": NetworkConstants.MAX_PLAYERS,
-		"state": "lobby",
+		"state": _host_state,
 	}
 	var bytes := JSON.stringify(payload).to_utf8_buffer()
 	_send_packet(bytes, NetworkConstants.LAN_DISCOVERY_MULTICAST_GROUP)

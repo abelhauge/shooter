@@ -138,13 +138,13 @@ def assert_match_rules() -> None:
     expected = {
         "mode_id": '&"team_skirmish"',
         "team_count": "2",
-        "players_per_team": "3",
+        "players_per_team": "0",
         "respawn_delay_sec": "3.0",
         "spawn_protection_sec": "1.0",
         "time_limit_sec": "480.0",
         "score_limit": "20",
         "friendly_fire": "false",
-        "allow_join_mid_match": "false",
+        "allow_join_mid_match": "true",
         "allow_spectators": "false",
         "allow_loadout_changes_mid_match": "false",
     }
@@ -153,11 +153,62 @@ def assert_match_rules() -> None:
             fail(f"match rule {key} expected {expected_value}, got {values.get(key)}")
 
 
+def assert_gpu_texture_compression() -> None:
+    project = read("project.godot")
+    for setting in (
+        'renderer/rendering_method="forward_plus"',
+        "textures/vram_compression/import_s3tc_bptc=true",
+        "textures/vram_compression/import_etc2_astc=true",
+    ):
+        if setting not in project:
+            fail(f"missing project GPU texture import setting {setting}")
+
+    export_presets = read("export_presets.cfg")
+    preset_match = re.search(r'\[preset\.(\d+)\]\s+name="macOS"', export_presets)
+    if preset_match is None:
+        fail("missing macOS export preset")
+    options_header = f"[preset.{preset_match.group(1)}.options]"
+    if options_header not in export_presets:
+        fail("missing macOS export preset options")
+    macos_preset = export_presets.split(options_header, 1)[1]
+    next_preset = re.search(r"\n\[preset\.\d+", macos_preset)
+    if next_preset is not None:
+        macos_preset = macos_preset[: next_preset.start()]
+    for setting in (
+        "texture_format/s3tc_bptc=true",
+        "texture_format/etc2_astc=true",
+    ):
+        if setting not in macos_preset:
+            fail(f"macOS export preset missing GPU texture format {setting}")
+
+
+def assert_macos_distribution_signing() -> None:
+    workflow = read(".github/workflows/itch-build.yml")
+    for expected in (
+        "runs-on: macos-latest",
+        'tools/ci/sign_macos_zip.sh "build/macos/MovementFPS.zip"',
+        'butler push "build/macos/MovementFPS.zip" "${ITCH_TARGET}:mac"',
+    ):
+        if expected not in workflow:
+            fail(f"macOS GitHub release workflow missing {expected}")
+
+    signing_script = read("tools/ci/sign_macos_zip.sh")
+    for expected in (
+        "codesign --force --deep --sign -",
+        "codesign --verify --deep --strict",
+        "ditto -c -k --keepParent",
+    ):
+        if expected not in signing_script:
+            fail(f"macOS signing helper missing {expected}")
+
+
 def main() -> None:
     assert_resource_paths_exist()
     assert_inputs()
     assert_weapons()
     assert_match_rules()
+    assert_gpu_texture_compression()
+    assert_macos_distribution_signing()
     print("static validation passed")
 
 

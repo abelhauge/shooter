@@ -31,6 +31,8 @@ mesh = SubResource("BoxMesh_weapon")
 material_override = SubResource("StandardMaterial3D_weapon")
 
 [node name="Label3D" type="Label3D" parent="."]
-position = Vector3(0, 2.2, 0)
+position = Vector3(0, 2.35, 0)
 pixel_size = 0.004
 billboard = 1
+outline_size = 8
+outline_modulate = Color(0, 0, 0, 0.9)

@@ -8,7 +8,15 @@ signal ready_requested()
 signal start_requested()
 
 const ABEL_PUBLIC_JOIN_ADDRESS := "203.0.113.77"
-const PUBLIC_IP_LOOKUP_URL := "https://api.ipify.org?format=json"
+const PUBLIC_IP_LOOKUP_URLS := [
+	"https://api.ipify.org?format=json",
+	"https://api64.ipify.org?format=json",
+	"https://checkip.amazonaws.com",
+	"http://api.ipify.org?format=json",
+]
+const ITCH_TARGET := "abelhauge/shooter"
+const ITCH_PAGE_URL := "https://abelhauge.itch.io/shooter"
+const ITCH_LATEST_URL_TEMPLATE := "https://itch.io/api/1/x/wharf/latest?target=%s&channel_name=%s"
 const SLOT_WEAPON_ORDER := {
 	&"primary": [&"assault_rifle", &"shotgun", &"sniper", &"flamethrower"],
 	&"secondary": [&"handgun", &"portal_gun", &"lasso", &"taser_gun"],
@@ -23,6 +31,7 @@ enum PublicNetworkMode {
 }
 
 var _status_label: Label
+var _name_edit: LineEdit
 var _address_edit: LineEdit
 var _port_edit: LineEdit
 var _lan_hosts_option: OptionButton
@@ -31,9 +40,16 @@ var _public_action_button: Button
 var _ready_button: Button
 var _start_button: Button
 var _public_ip_request: HTTPRequest
+var _update_request: HTTPRequest
+var _update_banner: PanelContainer
+var _update_label: Label
+var _update_button: Button
 var _lan_hosts: Array[Dictionary] = []
 var _public_network_mode := PublicNetworkMode.DETECTING
 var _detected_public_ip := ""
+var _latest_itch_version := ""
+var _public_ip_lookup_url_index := 0
+var _public_ip_lookup_failures: Array[String] = []
 var _selected_weapon_by_slot: Dictionary = {}
 var _slot_buttons_by_weapon: Dictionary = {}
 var _slot_weapon_ids_by_slot: Dictionary = {}
@@ -46,6 +62,7 @@ func _ready() -> void:
 	set_status("Checking public IP...")
 	set_network_controls(false, false)
 	_begin_public_ip_detection()
+	_begin_update_check()
 	set_process(true)
 
 func _process(delta: float) -> void:
@@ -77,6 +94,10 @@ func smoke_press_join(address: String, port: int) -> void:
 	_port_edit.text = str(port)
 	_on_join_pressed()
 
+func smoke_set_player_name(player_name: String) -> void:
+	if _name_edit != null:
+		_name_edit.text = player_name
+
 func smoke_press_join_abel() -> void:
 	_public_network_mode = PublicNetworkMode.JOIN
 	_on_public_action_pressed()
@@ -85,7 +106,7 @@ func smoke_press_public_action() -> void:
 	_on_public_action_pressed()
 
 func smoke_force_public_ip(public_ip: String) -> void:
-	_apply_detected_public_ip(public_ip)
+	_apply_detected_public_ip(public_ip, "smoke")
 
 func smoke_get_public_action_label() -> String:
 	return _public_action_button.text if _public_action_button != null else ""
@@ -106,8 +127,20 @@ func smoke_press_start() -> void:
 func smoke_get_status() -> String:
 	return _status_label.text if _status_label != null else ""
 
+func smoke_get_public_ip_lookup_debug() -> String:
+	return " | ".join(_public_ip_lookup_failures)
+
 func smoke_get_lan_host_count() -> int:
 	return _lan_hosts.size()
+
+func smoke_force_latest_itch_version(latest_version: String) -> void:
+	_apply_latest_itch_version(latest_version)
+
+func smoke_is_update_banner_visible() -> bool:
+	return _update_banner != null and _update_banner.visible
+
+func smoke_get_update_text() -> String:
+	return _update_label.text if _update_label != null else ""
 
 func smoke_get_slot_weapon_ids() -> Dictionary:
 	return {
@@ -135,24 +168,26 @@ func _build_ui() -> void:
 	_add_background_rect(Vector2(0, 0), Vector2(1280, 86), Color(0.73, 0.28, 0.12, 0.35))
 	_add_background_rect(Vector2(0, 636), Vector2(1280, 84), Color(0.05, 0.20, 0.30, 0.48))
 	_add_background_rect(Vector2(76, 118), Vector2(190, 500), Color(0.08, 0.14, 0.15, 0.70))
-	_add_background_rect(Vector2(954, 86), Vector2(180, 546), Color(0.10, 0.08, 0.06, 0.62))
-	_add_background_rect(Vector2(1098, 148), Vector2(76, 484), Color(0.76, 0.48, 0.16, 0.30))
+	_add_background_rect(Vector2(954, 86), Vector2(180, 546), Color(0.10, 0.08, 0.06, 0.34))
+	_add_background_rect(Vector2(1098, 148), Vector2(76, 484), Color(0.76, 0.48, 0.16, 0.18))
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(620, 560)
-	panel.position = Vector2(72, 82)
+	panel.custom_minimum_size = Vector2(930, 594)
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.size = panel.custom_minimum_size
+	panel.position = -panel.custom_minimum_size * 0.5
 	panel.add_theme_stylebox_override("panel", _style_box(Color(0.018, 0.026, 0.030, 0.94), Color(0.22, 0.62, 0.82, 0.72), 3, 14))
 	add_child(panel)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 28)
-	margin.add_theme_constant_override("margin_top", 26)
+	margin.add_theme_constant_override("margin_top", 20)
 	margin.add_theme_constant_override("margin_right", 28)
-	margin.add_theme_constant_override("margin_bottom", 24)
+	margin.add_theme_constant_override("margin_bottom", 18)
 	panel.add_child(margin)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 9)
+	box.add_theme_constant_override("separation", 7)
 	margin.add_child(box)
 
 	var title := Label.new()
@@ -164,12 +199,34 @@ func _build_ui() -> void:
 	title.add_theme_constant_override("shadow_offset_y", 2)
 	box.add_child(title)
 
+	_create_update_banner(box)
+
+	var identity_row := HBoxContainer.new()
+	identity_row.add_theme_constant_override("separation", 10)
+	box.add_child(identity_row)
+
+	var identity_label := Label.new()
+	identity_label.text = "HANDLE"
+	identity_label.custom_minimum_size = Vector2(82, 34)
+	identity_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	identity_label.add_theme_font_size_override("font_size", 13)
+	identity_label.add_theme_color_override("font_color", Color(0.72, 0.86, 0.92, 1.0))
+	identity_row.add_child(identity_label)
+
+	_name_edit = LineEdit.new()
+	_name_edit.text = _default_player_name()
+	_name_edit.placeholder_text = "Your name"
+	_name_edit.max_length = 18
+	_name_edit.custom_minimum_size = Vector2(260, 34)
+	_style_line_edit(_name_edit)
+	identity_row.add_child(_name_edit)
+
 	_status_label = Label.new()
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status_label.custom_minimum_size = Vector2(560, 54)
 	_status_label.add_theme_font_size_override("font_size", 16)
 	_status_label.add_theme_color_override("font_color", Color(0.86, 0.94, 0.92, 1.0))
-	box.add_child(_status_label)
+	_status_label.visible = false
+	add_child(_status_label)
 
 	var network_label := Label.new()
 	network_label.text = "NETWORK TARGET"
@@ -253,31 +310,36 @@ func _build_ui() -> void:
 	_start_button.pressed.connect(_on_start_pressed)
 	ready_row.add_child(_start_button)
 
-	var briefing := PanelContainer.new()
-	briefing.custom_minimum_size = Vector2(420, 360)
-	briefing.position = Vector2(760, 152)
-	briefing.add_theme_stylebox_override("panel", _style_box(Color(0.035, 0.045, 0.046, 0.88), Color(0.92, 0.52, 0.20, 0.62), 2, 12))
-	add_child(briefing)
-	var briefing_margin := MarginContainer.new()
-	briefing_margin.add_theme_constant_override("margin_left", 24)
-	briefing_margin.add_theme_constant_override("margin_top", 22)
-	briefing_margin.add_theme_constant_override("margin_right", 24)
-	briefing_margin.add_theme_constant_override("margin_bottom", 22)
-	briefing.add_child(briefing_margin)
-	var briefing_box := VBoxContainer.new()
-	briefing_box.add_theme_constant_override("separation", 12)
-	briefing_margin.add_child(briefing_box)
-	var briefing_title := Label.new()
-	briefing_title.text = "LOADOUT CHECK"
-	briefing_title.add_theme_font_size_override("font_size", 28)
-	briefing_title.add_theme_color_override("font_color", Color(1.0, 0.82, 0.42, 1.0))
-	briefing_box.add_child(briefing_title)
-	var briefing_text := Label.new()
-	briefing_text.text = "Fast routes, readable team colors, and LAN listen-server matches are the current vertical-slice contract.\n\nUse Offline for local movement/combat QA. Host and Join share the same arena and selected loadout."
-	briefing_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	briefing_text.add_theme_font_size_override("font_size", 18)
-	briefing_text.add_theme_color_override("font_color", Color(0.86, 0.93, 0.90, 1.0))
-	briefing_box.add_child(briefing_text)
+func _create_update_banner(parent: VBoxContainer) -> void:
+	_update_banner = PanelContainer.new()
+	_update_banner.visible = false
+	_update_banner.add_theme_stylebox_override("panel", _style_box(Color(0.15, 0.08, 0.025, 0.94), Color(1.0, 0.64, 0.25, 0.82), 1, 8))
+	parent.add_child(_update_banner)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_bottom", 6)
+	_update_banner.add_child(margin)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	margin.add_child(row)
+
+	_update_label = Label.new()
+	_update_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_update_label.add_theme_font_size_override("font_size", 15)
+	_update_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.72, 1.0))
+	row.add_child(_update_label)
+
+	_update_button = Button.new()
+	_update_button.text = "Update"
+	_update_button.tooltip_text = "Open the itch.io page to install the latest build."
+	_style_button(_update_button, Color(0.78, 0.42, 0.12, 1.0))
+	_update_button.custom_minimum_size = Vector2(126, 30)
+	_update_button.pressed.connect(_on_update_pressed)
+	row.add_child(_update_button)
 
 func _read_port() -> int:
 	var port := int(_port_edit.text)
@@ -408,11 +470,39 @@ func _select_weapon_for_slot(slot_type: StringName, weapon_id: StringName) -> bo
 
 func _selected_loadout() -> Dictionary:
 	return {
+		"player_name": _read_player_name(),
 		"primary": _selected_weapon(&"primary"),
 		"secondary": _selected_weapon(&"secondary"),
 		"melee": _selected_weapon(&"melee"),
 		"artillery": _selected_weapon(&"artillery"),
 	}
+
+func _read_player_name() -> String:
+	var raw := _name_edit.text if _name_edit != null else _default_player_name()
+	var sanitized := ""
+	for index in range(raw.length()):
+		var character := raw.substr(index, 1)
+		if character >= "a" and character <= "z":
+			sanitized += character
+		elif character >= "A" and character <= "Z":
+			sanitized += character
+		elif character >= "0" and character <= "9":
+			sanitized += character
+		elif character == "_" or character == "-":
+			sanitized += character
+		elif character == " " and sanitized.length() > 0 and not sanitized.ends_with(" "):
+			sanitized += character
+		if sanitized.length() >= 18:
+			break
+	sanitized = sanitized.strip_edges()
+	return sanitized if sanitized != "" else "Player"
+
+func _default_player_name() -> String:
+	var user := OS.get_environment("USER")
+	if user == "":
+		user = OS.get_environment("USERNAME")
+	user = user.strip_edges()
+	return user if user != "" else "Player"
 
 func _on_weapon_card_pressed(slot_type: StringName, weapon_id: StringName) -> void:
 	_select_weapon_for_slot(slot_type, weapon_id)
@@ -432,8 +522,8 @@ func _refresh_slot_buttons(slot_type: StringName) -> void:
 
 func _weapon_card_size(slot_type: StringName) -> Vector2:
 	if slot_type == &"melee":
-		return Vector2(560, 58)
-	return Vector2(134, 58)
+		return Vector2(812, 72)
+	return Vector2(194, 72)
 
 func _create_weapon_preview_button(definition: WeaponDefinition) -> Button:
 	var button := Button.new()
@@ -453,10 +543,12 @@ func _create_weapon_preview_button(definition: WeaponDefinition) -> Button:
 	button.add_child(viewport_container)
 
 	var viewport := SubViewport.new()
+	viewport.own_world_3d = true
 	viewport.transparent_bg = false
 	viewport.disable_3d = false
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	viewport.size = Vector2i(160, 72)
+	var card_size := _weapon_card_size(definition.slot_type)
+	viewport.size = Vector2i(maxi(48, int(card_size.x - 12.0)), maxi(40, int(card_size.y - 10.0)))
 	viewport_container.add_child(viewport)
 
 	var world := Node3D.new()
@@ -468,9 +560,20 @@ func _create_weapon_preview_button(definition: WeaponDefinition) -> Button:
 	environment_resource.background_color = Color(0.005, 0.008, 0.010, 1.0)
 	environment_resource.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment_resource.ambient_light_color = Color(0.32, 0.38, 0.42, 1.0)
-	environment_resource.ambient_light_energy = 2.4
+	environment_resource.ambient_light_energy = 2.8
 	environment.environment = environment_resource
 	world.add_child(environment)
+
+	var key_light := DirectionalLight3D.new()
+	key_light.rotation_degrees = Vector3(-38.0, -32.0, 0.0)
+	key_light.light_energy = 1.25
+	world.add_child(key_light)
+
+	var fill_light := OmniLight3D.new()
+	fill_light.position = Vector3(-0.65, 0.55, 1.1)
+	fill_light.light_energy = 1.8
+	fill_light.omni_range = 4.0
+	world.add_child(fill_light)
 
 	var preview_root := Node3D.new()
 	preview_root.name = "%sPreview" % String(definition.weapon_id)
@@ -485,6 +588,8 @@ func _create_weapon_preview_button(definition: WeaponDefinition) -> Button:
 	if view_model_path != "" and ResourceLoader.exists(view_model_path, "PackedScene"):
 		var packed := load(view_model_path) as PackedScene
 		var model := packed.instantiate() as Node3D
+		if model is GltfViewModelLoader:
+			(model as GltfViewModelLoader).apply_material_override = false
 		model.position = _preview_model_position(definition)
 		model.rotation_degrees = _preview_model_rotation(definition)
 		model.scale *= _preview_model_scale(definition)
@@ -495,12 +600,15 @@ func _create_weapon_preview_button(definition: WeaponDefinition) -> Button:
 	var camera := Camera3D.new()
 	camera.look_at_from_position(Vector3(0.0, 0.05, 1.2), Vector3(0.0, 0.0, 0.0), Vector3.UP)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 0.82
+	camera.size = 0.62
 	camera.current = true
 	camera.visible = false
 	world.add_child(camera)
 	_preview_entries.append({
 		"holder": model_holder,
+		"camera": camera,
+		"viewport": viewport,
+		"color": _weapon_color(definition),
 		"fitted": false,
 	})
 	return button
@@ -571,13 +679,31 @@ func _fit_preview_entry(entry: Dictionary) -> void:
 	var max_point: Vector3 = bounds["max"]
 	var center := (min_point + max_point) * 0.5
 	var size := max_point - min_point
-	var max_dimension := maxf(size.x, maxf(size.y, size.z))
-	if max_dimension <= 0.001:
+	if size.x <= 0.001 or size.y <= 0.001:
 		return
-	var fit_scale := 0.60 / max_dimension
+	var camera := entry.get("camera") as Camera3D
+	var viewport := entry.get("viewport") as SubViewport
+	var camera_size := 0.62 if camera == null else camera.size
+	var viewport_size := Vector2(220.0, 78.0) if viewport == null else Vector2(viewport.size)
+	var aspect := viewport_size.x / maxf(viewport_size.y, 1.0)
+	var target_width := camera_size * aspect * 0.76
+	var target_height := camera_size * 0.70
+	var fit_scale := minf(target_width / size.x, target_height / size.y)
 	holder.scale *= fit_scale
 	holder.position = -center * fit_scale
 	entry["fitted"] = true
+
+func _apply_preview_material_override(node: Node, color: Color) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.albedo_color = color.lightened(0.24)
+		material.metallic = 0.0
+		material.roughness = 0.45
+		mesh_instance.material_override = material
+	for child in node.get_children():
+		_apply_preview_material_override(child, color)
 
 func _calculate_mesh_bounds(root_node: Node) -> Dictionary:
 	var state := {
@@ -628,12 +754,15 @@ func _weapon_color(definition: WeaponDefinition) -> Color:
 	return Color(0.24, 0.42, 0.50, 1.0)
 
 func set_lan_hosts(hosts: Array[Dictionary]) -> void:
-	_lan_hosts = hosts.duplicate(true)
+	_lan_hosts = []
+	for host in hosts:
+		if String((host as Dictionary).get("state", "lobby")) == "in_game":
+			_lan_hosts.append((host as Dictionary).duplicate(true))
 	if _lan_hosts_option == null:
 		return
 	_lan_hosts_option.clear()
 	if _lan_hosts.is_empty():
-		_lan_hosts_option.add_item("No LAN matches found")
+		_lan_hosts_option.add_item("No ready LAN matches found")
 		_lan_hosts_option.disabled = true
 		if _join_lan_button != null:
 			_join_lan_button.disabled = true
@@ -692,6 +821,86 @@ func _on_ready_pressed() -> void:
 func _on_start_pressed() -> void:
 	start_requested.emit()
 
+func _begin_update_check() -> void:
+	var channel_name := _itch_channel_name()
+	if channel_name == "":
+		return
+	_update_request = HTTPRequest.new()
+	_update_request.name = "ItchLatestVersionLookup"
+	_update_request.timeout = 5.0
+	add_child(_update_request)
+	_update_request.request_completed.connect(_on_update_request_completed)
+	var url := ITCH_LATEST_URL_TEMPLATE % [ITCH_TARGET, channel_name]
+	var error := _update_request.request(url)
+	if error != OK:
+		push_warning("Could not start itch update check: %s" % error_string(error))
+
+func _on_update_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		return
+	var parsed = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	var latest := String((parsed as Dictionary).get("latest", "")).strip_edges()
+	if latest == "":
+		return
+	_apply_latest_itch_version(latest)
+
+func _apply_latest_itch_version(latest_version: String) -> void:
+	_latest_itch_version = latest_version.strip_edges()
+	if _latest_itch_version == "":
+		return
+	var current_version := _current_app_version()
+	if not _is_version_newer(_latest_itch_version, current_version):
+		return
+	if _update_label != null:
+		_update_label.text = "New build available: %s  |  Current: %s" % [_latest_itch_version, current_version]
+	if _update_banner != null:
+		_update_banner.visible = true
+
+func _on_update_pressed() -> void:
+	var error := OS.shell_open(ITCH_PAGE_URL)
+	if error != OK:
+		push_warning("Could not open itch update page: %s" % error_string(error))
+
+func _current_app_version() -> String:
+	var version := String(ProjectSettings.get_setting("application/config/version", "")).strip_edges()
+	return version if version != "" else "0.0.0-dev"
+
+func _itch_channel_name() -> String:
+	var os_name := OS.get_name()
+	if os_name == "macOS":
+		return "mac"
+	if os_name == "Windows":
+		return "windows"
+	return ""
+
+func _is_version_newer(candidate: String, current: String) -> bool:
+	var candidate_parts := _version_number_parts(candidate)
+	var current_parts := _version_number_parts(current)
+	var count := maxi(candidate_parts.size(), current_parts.size())
+	for index in range(count):
+		var candidate_value := int(candidate_parts[index]) if index < candidate_parts.size() else 0
+		var current_value := int(current_parts[index]) if index < current_parts.size() else 0
+		if candidate_value > current_value:
+			return true
+		if candidate_value < current_value:
+			return false
+	return false
+
+func _version_number_parts(version: String) -> Array[int]:
+	var parts: Array[int] = []
+	for token in version.split("."):
+		var digits := ""
+		for index in range(token.length()):
+			var character := token.substr(index, 1)
+			if character >= "0" and character <= "9":
+				digits += character
+			else:
+				break
+		parts.append(int(digits) if digits != "" else 0)
+	return parts
+
 func _begin_public_ip_detection() -> void:
 	_set_public_action_state(PublicNetworkMode.DETECTING)
 	_public_ip_request = HTTPRequest.new()
@@ -699,26 +908,58 @@ func _begin_public_ip_detection() -> void:
 	_public_ip_request.timeout = 4.0
 	add_child(_public_ip_request)
 	_public_ip_request.request_completed.connect(_on_public_ip_request_completed)
-	var error := _public_ip_request.request(PUBLIC_IP_LOOKUP_URL)
+	_public_ip_lookup_url_index = 0
+	_public_ip_lookup_failures.clear()
+	_request_current_public_ip_lookup_url()
+
+func _request_current_public_ip_lookup_url() -> void:
+	if _public_ip_request == null or _public_ip_lookup_url_index >= PUBLIC_IP_LOOKUP_URLS.size():
+		_apply_public_ip_detection_failure("Public IP check failed. Join will use Abel's saved IP.")
+		return
+	var url := String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index])
+	var error := _public_ip_request.request(url)
 	if error != OK:
-		_apply_public_ip_detection_failure("Could not start public IP check: %s" % error_string(error))
+		_public_ip_lookup_failures.append("%s start=%s" % [url, error_string(error)])
+		_try_next_public_ip_lookup_url()
 
 func _on_public_ip_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
-		_apply_public_ip_detection_failure("Public IP check failed. Join will use Abel's saved IP.")
+		_public_ip_lookup_failures.append("%s result=%d http=%d" % [
+			String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]),
+			result,
+			response_code,
+		])
+		_try_next_public_ip_lookup_url()
 		return
-	var parsed = JSON.parse_string(body.get_string_from_utf8())
-	if typeof(parsed) != TYPE_DICTIONARY:
-		_apply_public_ip_detection_failure("Public IP check returned invalid data. Join will use Abel's saved IP.")
-		return
-	var public_ip := String((parsed as Dictionary).get("ip", "")).strip_edges()
+	var public_ip := _parse_public_ip_response(body)
 	if public_ip == "":
-		_apply_public_ip_detection_failure("Public IP check returned no address. Join will use Abel's saved IP.")
+		_public_ip_lookup_failures.append("%s invalid-body" % String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]))
+		_try_next_public_ip_lookup_url()
 		return
-	_apply_detected_public_ip(public_ip)
+	_apply_detected_public_ip(public_ip, String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]))
 
-func _apply_detected_public_ip(public_ip: String) -> void:
+func _try_next_public_ip_lookup_url() -> void:
+	_public_ip_lookup_url_index += 1
+	if _public_ip_lookup_url_index < PUBLIC_IP_LOOKUP_URLS.size():
+		_request_current_public_ip_lookup_url.call_deferred()
+		return
+	push_warning("Public IP lookup failed: %s" % " | ".join(_public_ip_lookup_failures))
+	_apply_public_ip_detection_failure("Public IP check failed. Join will use Abel's saved IP.")
+
+func _parse_public_ip_response(body: PackedByteArray) -> String:
+	var text := body.get_string_from_utf8().strip_edges()
+	if text.begins_with("{") or text.begins_with("["):
+		var parsed = JSON.parse_string(text)
+		if typeof(parsed) == TYPE_DICTIONARY:
+			var ip := String((parsed as Dictionary).get("ip", "")).strip_edges()
+			return ip if ip.is_valid_ip_address() else ""
+	return text if text.is_valid_ip_address() else ""
+
+func _apply_detected_public_ip(public_ip: String, lookup_source := "") -> void:
 	_detected_public_ip = public_ip.strip_edges()
+	if lookup_source != "smoke":
+		var source := lookup_source if lookup_source != "" else "unknown"
+		print("Public IP detected via %s: %s" % [source, _detected_public_ip])
 	if _detected_public_ip == ABEL_PUBLIC_JOIN_ADDRESS:
 		_set_public_action_state(PublicNetworkMode.HOST)
 		set_status("Public IP %s matches Abel's host. Press Host game." % _detected_public_ip)
