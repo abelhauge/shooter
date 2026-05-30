@@ -18,7 +18,7 @@ script = ExtResource("1_arena_downtown_01_art")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.407177, 0, 0)
 
 [node name="P23_building_medium_2_001_001" type="Node3D" parent="DowntownCityMegaKitDressing/SkylineBackdrop" unique_id=15123121]
-transform = Transform3D(1, 0, 0, 0, 2.0253773, 0, 0, 0, 1, 47.294395, -6.539507, -8.927483)
+transform = Transform3D(1, 0, 0, 0, 2.0253773, 0, 0, 0, 1, 47.294395, -6.539507, -7.0775814)
 script = ExtResource("2_city_asset_instance")
 asset_id = "building_medium_2_001"
 display_name = "Medium Corner Building"
@@ -36,7 +36,7 @@ source_path = "res://assets/third_party/quaternius/downtown_city_megakit/Exports
 placement_index = 1
 
 [node name="P23_building_large_2_002" type="Node3D" parent="DowntownCityMegaKitDressing/SkylineBackdrop" unique_id=1848748243]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.976189, 7.593952, -27.520933)
+transform = Transform3D(1, 0, 0, 0, 1.185793, 0, 0, 0, 1, 8.976, 0, -27.521)
 script = ExtResource("2_city_asset_instance")
 asset_id = "building_large_2"
 display_name = "Large Brick Tower"
@@ -135,13 +135,40 @@ source_path = "res://assets/third_party/quaternius/downtown_city_megakit/Exports
 placement_index = 10
 
 [node name="P23_building_medium_2_001_003" type="Node3D" parent="DowntownCityMegaKitDressing/SkylineBackdrop" unique_id=1029324466]
-transform = Transform3D(1, 0, 0, 0, 1.5237694, 0, 0, 0, 1, 38.470596, 0, -34.016)
+transform = Transform3D(1, 0, 0, 0, 1.5237694, 0, 0, 0, 1, 38.470596, 0, -28.83609)
 script = ExtResource("2_city_asset_instance")
 asset_id = "building_medium_2_001"
 display_name = "Medium Corner Building"
 category = "building"
 source_path = "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Medium_2_001.gltf"
 placement_index = 3
+
+[node name="P23_building_small_1_002" type="Node3D" parent="DowntownCityMegaKitDressing/SkylineBackdrop" unique_id=320951458]
+transform = Transform3D(-1.8707972, 0, 8.742277e-08, 0, 1.5241373, 0, -1.6355028e-07, 0, -0.99999994, -35.64564, 0, -43.33389)
+script = ExtResource("2_city_asset_instance")
+asset_id = "building_small_1"
+display_name = "Small Brick Building"
+category = "building"
+source_path = "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Small_1.gltf"
+placement_index = 2
+
+[node name="P23_building_medium_2_001_004" type="Node3D" parent="DowntownCityMegaKitDressing/SkylineBackdrop" unique_id=1688681694]
+transform = Transform3D(1, 0, 0, 0, 1.1627346, 0, 0, 0, 1, -10.544854, 0, -31.36174)
+script = ExtResource("2_city_asset_instance")
+asset_id = "building_medium_2_001"
+display_name = "Medium Corner Building"
+category = "building"
+source_path = "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Medium_2_001.gltf"
+placement_index = 4
+
+[node name="P23_building_medium_2_001_005" type="Node3D" parent="DowntownCityMegaKitDressing/SkylineBackdrop" unique_id=352104776]
+transform = Transform3D(1, 0, 0, 0, 1.2399561, 0, 0, 0, 1, -38.008606, 0, -16.426994)
+script = ExtResource("2_city_asset_instance")
+asset_id = "building_medium_2_001"
+display_name = "Medium Corner Building"
+category = "building"
+source_path = "res://assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Medium_2_001.gltf"
+placement_index = 5
 
 [node name="P23_building_medium_2_001_001" type="Node3D" parent="DowntownCityMegaKitDressing" unique_id=1921897628]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.990356, 0, -7.546255)
