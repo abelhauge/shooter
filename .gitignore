@@ -1,7 +1,13 @@
 .DS_Store
+.env
+.env.*
+!.env.example
+build_version.txt
 .bin/
 .codex/
 .godot/
+build/
+dist/
 
 # Godot import/cache output. These are regenerated locally.
 *.import
