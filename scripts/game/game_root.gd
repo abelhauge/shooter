@@ -37,6 +37,7 @@ var _balance_dummy: DummyTarget
 var _dev_balance_dummy_enabled := false
 var _local_player_name := "Player"
 var _network_player_names: Dictionary = {1: "Player"}
+var _persistent_host_enabled := false
 
 func _ready() -> void:
 	_load_network_weapon_definitions()
@@ -56,6 +57,7 @@ func _physics_process(delta: float) -> void:
 	_tick_network_respawns(delta)
 	_update_network_sync(delta)
 	_tick_rooftop_hazard()
+	_tick_persistent_host()
 
 func set_network_session(session: NetworkSession) -> void:
 	network_session = session
@@ -108,6 +110,9 @@ func set_dev_balance_dummy_enabled(enabled: bool) -> void:
 	elif _balance_dummy != null and is_instance_valid(_balance_dummy):
 		_balance_dummy.queue_free()
 		_balance_dummy = null
+
+func set_persistent_host_enabled(enabled: bool) -> void:
+	_persistent_host_enabled = enabled
 
 func get_runtime_smoke_summary() -> Dictionary:
 	var team_counts := _build_network_team_counts()
@@ -860,7 +865,7 @@ func run_p14_shotgun_checks() -> Dictionary:
 		and int(view_summary.get("vertex_count", 0)) > 0
 		and String(view_summary.get("source_fbx_path", "")).ends_with("Shotgun.fbx")
 		and String(view_summary.get("generated_glb_path", "")).ends_with("shotgun_from_fbx.glb")
-		and bool(view_summary.get("material_override", false))
+		and bool(view_summary.get("has_curated_materials", false))
 	)
 	var tuning_report := get_p14_shotgun_tuning_report()
 	var shotgun_tuning: Dictionary = tuning_report.get("shotgun", {})
@@ -1007,7 +1012,7 @@ func run_p14_sniper_checks() -> Dictionary:
 		and int(view_summary.get("vertex_count", 0)) > 0
 		and String(view_summary.get("source_fbx_path", "")).ends_with("SniperRifle.fbx")
 		and String(view_summary.get("generated_glb_path", "")).ends_with("sniper_from_fbx.glb")
-		and bool(view_summary.get("material_override", false))
+		and bool(view_summary.get("has_curated_materials", false))
 	)
 	var tuning_report := get_p14_sniper_tuning_report()
 	var sniper_tuning: Dictionary = tuning_report.get("sniper", {})
@@ -1190,7 +1195,7 @@ func run_p14_grenade_checks() -> Dictionary:
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
 		and String(view_summary.get("viewmodel_kind", "")) == "grenade"
-		and bool(view_summary.get("material_override", false))
+		and bool(view_summary.get("has_curated_materials", false))
 	)
 	var tuning_report := get_p14_grenade_tuning_report()
 	var grenade_tuning: Dictionary = tuning_report.get("grenade", {})
@@ -1398,7 +1403,7 @@ func run_p14_flamethrower_checks() -> Dictionary:
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
 		and String(view_summary.get("viewmodel_kind", "")) == "flamethrower"
-		and bool(view_summary.get("material_override", false))
+		and bool(view_summary.get("has_curated_materials", false))
 	)
 	var tuning_report := get_p14_flamethrower_tuning_report()
 	var flame_tuning: Dictionary = tuning_report.get("flamethrower", {})
@@ -1630,7 +1635,7 @@ func run_p14_lasso_checks() -> Dictionary:
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
 		and String(view_summary.get("viewmodel_kind", "")) == "lasso"
-		and bool(view_summary.get("material_override", false))
+		and bool(view_summary.get("has_curated_materials", false))
 	)
 	var tuning_report := get_p14_lasso_tuning_report()
 	var lasso_tuning: Dictionary = tuning_report.get("lasso", {})
@@ -1972,7 +1977,7 @@ func run_p14_redbull_checks() -> Dictionary:
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
 		and String(view_summary.get("viewmodel_kind", "")) == "redbull"
-		and bool(view_summary.get("material_override", false))
+		and bool(view_summary.get("has_curated_materials", false))
 	)
 	var tuning_report := get_p14_redbull_tuning_report()
 	var redbull_tuning: Dictionary = tuning_report.get("redbull", {})
@@ -2205,7 +2210,7 @@ func run_p14_portal_gun_checks() -> Dictionary:
 		and bool(view_summary.get("has_mesh", false))
 		and int(view_summary.get("vertex_count", 0)) > 0
 		and String(view_summary.get("viewmodel_kind", "")) == "portal_gun"
-		and bool(view_summary.get("material_override", false))
+		and bool(view_summary.get("has_curated_materials", false))
 	)
 	var tuning_report := get_p14_portal_gun_tuning_report()
 	var portal_tuning: Dictionary = tuning_report.get("portal_gun", {})
@@ -4337,6 +4342,15 @@ func _start_offline_match() -> void:
 	if active_map != null and active_map.has_method("get_spawn_points"):
 		_arena_spawn_points = active_map.get_spawn_points()
 	match_director.configure(local_player, _arena_spawn_points)
+
+func _tick_persistent_host() -> void:
+	if not _persistent_host_enabled or match_director == null or match_director.match_phase != &"results":
+		return
+	match_director.start_match()
+	if network_session != null and network_session.is_active() and multiplayer.is_server():
+		for peer_id in _network_player_states.keys():
+			_respawn_network_peer(int(peer_id))
+		_send_authoritative_snapshot()
 
 func _tick_rooftop_hazard() -> void:
 	if _rooftop_config == null:

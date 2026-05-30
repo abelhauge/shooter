@@ -81,27 +81,8 @@ if "%UPSTREAM%"=="" (
   exit /b 0
 )
 
-echo Syncing GitHub branch '%BRANCH%' with '%UPSTREAM%'... 1>&2
-set "HAS_CHANGES=0"
-git -C "%ROOT_DIR%" diff --quiet
-if errorlevel 1 set "HAS_CHANGES=1"
-git -C "%ROOT_DIR%" diff --cached --quiet
-if errorlevel 1 set "HAS_CHANGES=1"
-for /f "usebackq delims=" %%F in (`git -C "%ROOT_DIR%" ls-files --others --exclude-standard`) do set "HAS_CHANGES=1"
-
-if "%HAS_CHANGES%"=="1" (
-  git -C "%ROOT_DIR%" add -A
-  if errorlevel 1 exit /b !errorlevel!
-  git -C "%ROOT_DIR%" diff --cached --quiet
-  if errorlevel 1 (
-    git -C "%ROOT_DIR%" commit -m "Auto sync before run"
-    if errorlevel 1 exit /b !errorlevel!
-  )
-)
-
-git -C "%ROOT_DIR%" pull --no-rebase --no-edit
-if errorlevel 1 exit /b !errorlevel!
-git -C "%ROOT_DIR%" push
+echo Pulling latest changes for '%BRANCH%' from '%UPSTREAM%'... 1>&2
+git -C "%ROOT_DIR%" pull --ff-only --autostash
 exit /b !errorlevel!
 
 :resolve_godot
@@ -139,12 +120,33 @@ if exist "%ROOT_DIR%.bin\godot.exe" (
   set "GODOT_BIN_RESOLVED=%ROOT_DIR%.bin\godot.exe"
   exit /b 0
 )
+call :find_godot_under "%ROOT_DIR%.bin"
+if not errorlevel 1 exit /b 0
 if exist "%ProgramFiles%\Godot\Godot.exe" (
   set "GODOT_BIN_RESOLVED=%ProgramFiles%\Godot\Godot.exe"
   exit /b 0
 )
+call :find_godot_under "%ProgramFiles%\Godot"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%ProgramFiles%\GodotEngine"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%LOCALAPPDATA%\Microsoft\WinGet\Links"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%LOCALAPPDATA%\Microsoft\WinGet\Packages"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%LOCALAPPDATA%\Programs\Godot"
+if not errorlevel 1 exit /b 0
 
 echo Could not find a Godot executable in PATH. Install Godot 4 or set GODOT_BIN=C:\path\to\Godot.exe. 1>&2
+exit /b 1
+
+:find_godot_under
+if "%~1"=="" exit /b 1
+if not exist "%~1" exit /b 1
+for /f "delims=" %%G in ('dir /b /s "%~1\Godot*.exe" 2^>nul') do (
+  set "GODOT_BIN_RESOLVED=%%G"
+  exit /b 0
+)
 exit /b 1
 
 :configure_editor_start_scene

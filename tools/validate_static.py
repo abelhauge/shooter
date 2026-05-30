@@ -195,11 +195,54 @@ def assert_macos_distribution_signing() -> None:
     signing_script = read("tools/ci/sign_macos_zip.sh")
     for expected in (
         "codesign --force --deep --sign -",
+        "codesign --force --deep --options runtime --timestamp --sign",
         "codesign --verify --deep --strict",
+        "xcrun notarytool submit",
+        "xcrun stapler staple",
         "ditto -c -k --keepParent",
     ):
         if expected not in signing_script:
             fail(f"macOS signing helper missing {expected}")
+
+
+def assert_run_script_git_pull() -> None:
+    run_script = read("run.sh")
+    for expected in (
+        "SHOOTER_SKIP_GIT_SYNC",
+        'git -C "$ROOT_DIR" pull --ff-only --autostash',
+        "sync_github_before_run",
+    ):
+        if expected not in run_script:
+            fail(f"run.sh missing git sync behavior {expected}")
+
+    windows_run_script = read("run.cmd")
+    for expected in (
+        "SHOOTER_SKIP_GIT_SYNC",
+        'git -C "%ROOT_DIR%" pull --ff-only --autostash',
+        ":sync_github_before_run",
+        "%LOCALAPPDATA%\\Microsoft\\WinGet\\Links",
+        "%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages",
+        ":find_godot_under",
+    ):
+        if expected not in windows_run_script:
+            fail(f"run.cmd missing git sync behavior {expected}")
+    for forbidden in (
+        'git -C "%ROOT_DIR%" add -A',
+        'git -C "%ROOT_DIR%" commit',
+        'git -C "%ROOT_DIR%" push',
+    ):
+        if forbidden in windows_run_script:
+            fail(f"run.cmd should not auto-write to git during launch: {forbidden}")
+
+    windows_install_script = read("install.cmd")
+    for expected in (
+        "%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages",
+        "%LOCALAPPDATA%\\Microsoft\\WinGet\\Links",
+        ":find_godot_under",
+        'dir /b /s "%~1\\Godot*.exe"',
+    ):
+        if expected not in windows_install_script:
+            fail(f"install.cmd missing Windows Godot resolver behavior {expected}")
 
 
 def main() -> None:
@@ -209,6 +252,7 @@ def main() -> None:
     assert_match_rules()
     assert_gpu_texture_compression()
     assert_macos_distribution_signing()
+    assert_run_script_git_pull()
     print("static validation passed")
 
 

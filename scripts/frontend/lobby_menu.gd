@@ -28,6 +28,7 @@ enum PublicNetworkMode {
 	DETECTING,
 	HOST,
 	JOIN,
+	WAITING_HOST,
 }
 
 var _status_label: Label
@@ -46,6 +47,7 @@ var _update_label: Label
 var _update_button: Button
 var _lan_hosts: Array[Dictionary] = []
 var _public_network_mode := PublicNetworkMode.DETECTING
+var _public_join_override := false
 var _detected_public_ip := ""
 var _latest_itch_version := ""
 var _public_ip_lookup_url_index := 0
@@ -108,8 +110,14 @@ func smoke_press_public_action() -> void:
 func smoke_force_public_ip(public_ip: String) -> void:
 	_apply_detected_public_ip(public_ip, "smoke")
 
+func smoke_enable_public_join_override() -> void:
+	set_public_join_override(true)
+
 func smoke_get_public_action_label() -> String:
 	return _public_action_button.text if _public_action_button != null else ""
+
+func smoke_force_public_host_waiting() -> void:
+	set_public_host_waiting()
 
 func smoke_press_join_lan(index := 0) -> bool:
 	if _lan_hosts.is_empty() or index < 0 or index >= _lan_hosts.size():
@@ -276,21 +284,16 @@ func _build_ui() -> void:
 	_create_slot_selector(box, "Artillery", &"artillery")
 
 	var action_row := GridContainer.new()
-	action_row.columns = 2
+	action_row.columns = 1
 	action_row.add_theme_constant_override("h_separation", 10)
 	action_row.add_theme_constant_override("v_separation", 8)
 	box.add_child(action_row)
-
-	var offline_button := Button.new()
-	offline_button.text = "Offline Dev Match"
-	_style_button(offline_button, Color(0.16, 0.48, 0.68, 1.0))
-	offline_button.pressed.connect(_on_offline_pressed)
-	action_row.add_child(offline_button)
 
 	_public_action_button = Button.new()
 	_public_action_button.text = "Detecting..."
 	_public_action_button.disabled = true
 	_style_button(_public_action_button, Color(0.32, 0.42, 0.70, 1.0))
+	_public_action_button.custom_minimum_size = Vector2(236, 38)
 	_public_action_button.pressed.connect(_on_public_action_pressed)
 	action_row.add_child(_public_action_button)
 
@@ -305,7 +308,7 @@ func _build_ui() -> void:
 	ready_row.add_child(_ready_button)
 
 	_start_button = Button.new()
-	_start_button.text = "Host Start Match"
+	_start_button.text = "Start"
 	_style_button(_start_button, Color(0.88, 0.58, 0.18, 1.0))
 	_start_button.pressed.connect(_on_start_pressed)
 	ready_row.add_child(_start_button)
@@ -435,7 +438,7 @@ func _style_weapon_button(button: Button, definition: WeaponDefinition, selected
 	button.add_theme_font_size_override("font_size", 1)
 
 func _style_button(button: Button, color: Color) -> void:
-	button.custom_minimum_size = Vector2(176, 38)
+	button.custom_minimum_size = Vector2(maxf(button.custom_minimum_size.x, 176.0), maxf(button.custom_minimum_size.y, 38.0))
 	button.add_theme_stylebox_override("normal", _style_box(color.darkened(0.12), Color(0.92, 0.96, 1.0, 0.28), 1, 7))
 	button.add_theme_stylebox_override("hover", _style_box(color.lightened(0.08), Color(1.0, 0.86, 0.52, 0.72), 2, 7))
 	button.add_theme_stylebox_override("pressed", _style_box(color.darkened(0.24), Color(1.0, 0.70, 0.32, 0.92), 2, 7))
@@ -792,6 +795,8 @@ func _on_public_action_pressed() -> void:
 	if _public_network_mode == PublicNetworkMode.HOST:
 		_on_host_pressed()
 		return
+	if _public_network_mode != PublicNetworkMode.JOIN:
+		return
 	_address_edit.text = ABEL_PUBLIC_JOIN_ADDRESS
 	_port_edit.text = str(NetworkConstants.DEFAULT_PORT)
 	join_requested.emit(ABEL_PUBLIC_JOIN_ADDRESS, NetworkConstants.DEFAULT_PORT, _selected_loadout())
@@ -902,6 +907,9 @@ func _version_number_parts(version: String) -> Array[int]:
 	return parts
 
 func _begin_public_ip_detection() -> void:
+	if _public_join_override:
+		_apply_public_join_override_state()
+		return
 	_set_public_action_state(PublicNetworkMode.DETECTING)
 	_public_ip_request = HTTPRequest.new()
 	_public_ip_request.name = "PublicIpLookup"
@@ -913,6 +921,9 @@ func _begin_public_ip_detection() -> void:
 	_request_current_public_ip_lookup_url()
 
 func _request_current_public_ip_lookup_url() -> void:
+	if _public_join_override:
+		_apply_public_join_override_state()
+		return
 	if _public_ip_request == null or _public_ip_lookup_url_index >= PUBLIC_IP_LOOKUP_URLS.size():
 		_apply_public_ip_detection_failure("Public IP check failed. Join will use Abel's saved IP.")
 		return
@@ -923,6 +934,9 @@ func _request_current_public_ip_lookup_url() -> void:
 		_try_next_public_ip_lookup_url()
 
 func _on_public_ip_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if _public_join_override:
+		_apply_public_join_override_state()
+		return
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
 		_public_ip_lookup_failures.append("%s result=%d http=%d" % [
 			String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]),
@@ -939,6 +953,9 @@ func _on_public_ip_request_completed(result: int, response_code: int, _headers: 
 	_apply_detected_public_ip(public_ip, String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]))
 
 func _try_next_public_ip_lookup_url() -> void:
+	if _public_join_override:
+		_apply_public_join_override_state()
+		return
 	_public_ip_lookup_url_index += 1
 	if _public_ip_lookup_url_index < PUBLIC_IP_LOOKUP_URLS.size():
 		_request_current_public_ip_lookup_url.call_deferred()
@@ -956,20 +973,41 @@ func _parse_public_ip_response(body: PackedByteArray) -> String:
 	return text if text.is_valid_ip_address() else ""
 
 func _apply_detected_public_ip(public_ip: String, lookup_source := "") -> void:
+	if _public_join_override:
+		_apply_public_join_override_state()
+		return
 	_detected_public_ip = public_ip.strip_edges()
 	if lookup_source != "smoke":
 		var source := lookup_source if lookup_source != "" else "unknown"
 		print("Public IP detected via %s: %s" % [source, _detected_public_ip])
 	if _detected_public_ip == ABEL_PUBLIC_JOIN_ADDRESS:
 		_set_public_action_state(PublicNetworkMode.HOST)
-		set_status("Public IP %s matches Abel's host. Press Host game." % _detected_public_ip)
+		set_status("Public IP %s matches Abel's host. Press Start." % _detected_public_ip)
 	else:
 		_set_public_action_state(PublicNetworkMode.JOIN)
 		set_status("Public IP %s is a client. Press Join to connect to Abel." % _detected_public_ip)
 
 func _apply_public_ip_detection_failure(message: String) -> void:
-	_set_public_action_state(PublicNetworkMode.JOIN)
+	if _public_join_override:
+		_apply_public_join_override_state()
+		return
+	_set_public_action_state(PublicNetworkMode.WAITING_HOST)
 	set_status(message)
+
+func set_public_host_waiting(message := "Venter på Host.") -> void:
+	_set_public_action_state(PublicNetworkMode.WAITING_HOST)
+	set_status(message)
+
+func set_public_join_override(enabled := true) -> void:
+	_public_join_override = enabled
+	if _public_ip_request != null:
+		_public_ip_request.cancel_request()
+	if _public_join_override:
+		_apply_public_join_override_state()
+
+func _apply_public_join_override_state() -> void:
+	_set_public_action_state(PublicNetworkMode.JOIN)
+	set_status("--join selected. Press Join to connect to Abel.")
 
 func _set_public_action_state(mode: int) -> void:
 	_public_network_mode = mode
@@ -977,11 +1015,15 @@ func _set_public_action_state(mode: int) -> void:
 		return
 	_public_action_button.disabled = false
 	if mode == PublicNetworkMode.HOST:
-		_public_action_button.text = "Host game"
+		_public_action_button.text = "Start"
 		_style_button(_public_action_button, Color(0.76, 0.38, 0.14, 1.0))
 	elif mode == PublicNetworkMode.JOIN:
 		_public_action_button.text = "Join"
 		_style_button(_public_action_button, Color(0.32, 0.42, 0.70, 1.0))
+	elif mode == PublicNetworkMode.WAITING_HOST:
+		_public_action_button.text = "Venter på Host"
+		_public_action_button.disabled = true
+		_style_button(_public_action_button, Color(0.28, 0.32, 0.34, 1.0))
 	else:
 		_public_action_button.text = "Detecting..."
 		_public_action_button.disabled = true

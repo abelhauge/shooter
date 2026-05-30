@@ -15,7 +15,7 @@ func _validate() -> void:
 	while Time.get_ticks_msec() < deadline_msec:
 		await process_frame
 		var label := lobby.smoke_get_public_action_label()
-		if label == "Host game":
+		if label == "Start":
 			print("PUBLIC_IP_LOOKUP_PASS label=%s status=%s debug=%s" % [
 				label,
 				lobby.smoke_get_status(),
@@ -23,7 +23,7 @@ func _validate() -> void:
 			])
 			quit(0)
 			return
-		if label == "Join" and not lobby.smoke_get_status().contains("Checking public IP"):
+		if (label == "Join" or label == "Venter på Host") and not lobby.smoke_get_status().contains("Checking public IP"):
 			break
 
 	push_error("Public IP lookup validation failed: label=%s status=%s expected=%s" % [

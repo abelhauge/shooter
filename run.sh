@@ -10,6 +10,39 @@ if [[ ! -f "$PROJECT_FILE" ]]; then
   exit 1
 fi
 
+sync_github_before_run() {
+  if [[ "${SHOOTER_SKIP_GIT_SYNC:-0}" == "1" ]]; then
+    echo "Skipping GitHub sync because SHOOTER_SKIP_GIT_SYNC=1." >&2
+    return 0
+  fi
+  if ! command -v git >/dev/null 2>&1; then
+    echo "GitHub sync skipped: git was not found in PATH." >&2
+    return 0
+  fi
+  if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "GitHub sync skipped: $ROOT_DIR is not a git worktree." >&2
+    return 0
+  fi
+
+  local branch
+  branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
+  if [[ "$branch" == "HEAD" ]]; then
+    echo "GitHub sync skipped: detached HEAD has no upstream branch." >&2
+    return 0
+  fi
+
+  local upstream
+  if ! upstream="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; then
+    echo "GitHub sync skipped: branch '$branch' has no upstream." >&2
+    return 0
+  fi
+
+  echo "Pulling latest changes for '$branch' from '$upstream'..." >&2
+  git -C "$ROOT_DIR" pull --ff-only --autostash
+}
+
+sync_github_before_run
+
 if [[ -n "${GODOT_BIN:-}" ]]; then
   if [[ "$GODOT_BIN" == */* && ! -x "$GODOT_BIN" ]]; then
     echo "GODOT_BIN is set but is not executable: $GODOT_BIN" >&2

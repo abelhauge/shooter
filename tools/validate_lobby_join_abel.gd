@@ -2,6 +2,8 @@ extends SceneTree
 
 const LOBBY_SCENE := preload("res://scenes/frontend/lobby_menu.tscn")
 const OUTPUT_PATH := "res://docs/verification/screenshots/lobby_public_join_button.png"
+const WAITING_OUTPUT_PATH := "res://docs/verification/screenshots/lobby_public_waiting_host_button.png"
+const START_OUTPUT_PATH := "res://docs/verification/screenshots/lobby_public_start_button.png"
 const EXPECTED_ADDRESS := "203.0.113.77"
 
 var _join_event := {}
@@ -28,6 +30,9 @@ func _validate() -> void:
 	if not lobby.smoke_get_update_text().contains("99.99.99"):
 		_fail("Update banner did not include latest version: %s" % lobby.smoke_get_update_text())
 		return
+	if _find_button_by_text(lobby, "Offline Dev Match") != null:
+		_fail("Offline Dev Match button should not be visible in the lobby")
+		return
 	var join_button := _find_button_by_text(lobby, "Join")
 	if join_button == null:
 		_fail("Join button was not found")
@@ -38,9 +43,7 @@ func _validate() -> void:
 
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
-		var error := root.get_texture().get_image().save_png(ProjectSettings.globalize_path(OUTPUT_PATH))
-		if error != OK:
-			_fail("could not save screenshot %s: %s" % [OUTPUT_PATH, error_string(error)])
+		if not _save_screenshot(OUTPUT_PATH):
 			return
 
 	lobby.smoke_press_public_action()
@@ -54,16 +57,29 @@ func _validate() -> void:
 		_fail("Join emitted wrong port: %s" % str(_join_event))
 		return
 
-	lobby.smoke_force_public_ip(EXPECTED_ADDRESS)
-	if lobby.smoke_get_public_action_label() != "Host game":
-		_fail("Abel public IP did not switch button to Host game")
+	lobby.smoke_force_public_host_waiting()
+	if lobby.smoke_get_public_action_label() != "Venter på Host":
+		_fail("Missing waiting-for-host public action label")
 		return
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		if not _save_screenshot(WAITING_OUTPUT_PATH):
+			return
+
+	lobby.smoke_force_public_ip(EXPECTED_ADDRESS)
+	if lobby.smoke_get_public_action_label() != "Start":
+		_fail("Abel public IP did not switch button to Start")
+		return
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		if not _save_screenshot(START_OUTPUT_PATH):
+			return
 	lobby.smoke_press_public_action()
 	if _host_event.is_empty():
-		_fail("Host game did not emit host_requested")
+		_fail("Start did not emit host_requested")
 		return
 	if int(_host_event.get("port", 0)) != NetworkConstants.DEFAULT_PORT:
-		_fail("Host game emitted wrong port: %s" % str(_host_event))
+		_fail("Start emitted wrong port: %s" % str(_host_event))
 		return
 
 	print("LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=%s address=%s port=%d" % [OUTPUT_PATH if DisplayServer.get_name() != "headless" else "skipped-headless", EXPECTED_ADDRESS, NetworkConstants.DEFAULT_PORT])
@@ -90,6 +106,13 @@ func _find_button_by_text(root_node: Node, text: String) -> Button:
 		if found != null:
 			return found
 	return null
+
+func _save_screenshot(path: String) -> bool:
+	var error := root.get_texture().get_image().save_png(ProjectSettings.globalize_path(path))
+	if error != OK:
+		_fail("could not save screenshot %s: %s" % [path, error_string(error)])
+		return false
+	return true
 
 func _fail(message: String) -> void:
 	push_error("Lobby public IP routing validation failed: %s" % message)

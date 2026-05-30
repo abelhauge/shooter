@@ -1178,6 +1178,36 @@ Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
 - Weapon preview cards still render in all four rows after the network-flow changes.
 - The update banner, handle field and action row remain readable in the 1280x720 capture.
 
+## True Headless Persistent Host
+
+Date: 2026-05-30
+
+- `./run.sh --headless` now keeps Godot in true no-window mode and auto-hosts the main game when no smoke/script/verification args are supplied.
+- `--port=<port>` and `--name=<name>` still work with the headless host.
+- The host prints `HEADLESS_HOST_READY` when its `GameRoot` is scene-ready, accepts mid-game joiners, and uses persistent match restart after results.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ ./run.sh --headless --host --smoke-test=network-game --smoke-expected-peers=0 --smoke-timeout-sec=8
+SMOKE_PASS network-game: network host has 0 expected peer(s)
+EXIT=0
+
+$ ./run.sh --headless --port=25280 --name=PersistentHost
+HEADLESS_HOST_READY mode=true_headless port=25280 capacity=4096 join_mid_game=true persistent=true
+manual stop after readiness proof
+
+$ ./run.sh --headless --join=127.0.0.1 --port=25280 --smoke-test=network-game --smoke-timeout-sec=10
+SMOKE_PASS network-game: network client connected and game scene ready
+EXIT=0
+```
+
+No visual QA screenshot is required for this change because the target behavior is explicitly true headless/no-window hosting.
+
 ### Harness Added
 
 P08 now has dedicated GUI verification modes:
@@ -3043,3 +3073,150 @@ Scope note:
 
 - Full automatic download, unpack and restart is not implemented in this pass because itch's public latest-version endpoint returns only the latest user-version, not a safe direct download artifact.
 - Safe self-updating for downloaded desktop apps should be implemented through a separate launcher/updater process or itch app integration so the running executable is not replacing itself.
+
+## Weapon Viewmodel Material And Rotation Fix
+
+Date: 2026-05-30
+
+- Animated Guns Pack FBX-derived viewmodels now use the curated named material palette, because the local generated GLBs do not carry useful texture maps or varied source colors.
+- Quaternius Sci-Fi Modular Gun Pack and Kenney Food Kit viewmodels now preserve their source materials instead of being flattened to a single override color.
+- Portal gun and lasso/crossbow viewmodels rotate their Crossbow GLTF assets onto the forward view axis instead of presenting the model sideways.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+
+$ ./run.sh -- --verification-capture=p05a
+VERIFICATION_CAPTURE_PASS p05a
+EXIT=0
+```
+
+Visual QA screenshots:
+
+- `docs/verification/screenshots/weapon_visual_qa/assault_rifle.png`: assault rifle is visible in the lower-right viewmodel area with separate wood, metal and dark parts; it no longer reads as one flat grey silhouette.
+- `docs/verification/screenshots/weapon_visual_qa/handgun.png`: handgun has distinct black/metal body and brown grip material zones, and remains clear of the crosshair.
+- `docs/verification/screenshots/weapon_visual_qa/shotgun.png`: shotgun points forward with separate barrel/body material regions and does not cover HUD panels.
+- `docs/verification/screenshots/weapon_visual_qa/sniper.png`: sniper shows green body, dark scope/barrel parts and a forward aim silhouette.
+- `docs/verification/screenshots/weapon_visual_qa/knife.png`: knife keeps the Kenney blade/handle material colors instead of a single override tint.
+- `docs/verification/screenshots/weapon_visual_qa/smoke_bomb.png`: smoke bomb uses the Sci-Fi grenade source color blocks, not a single flat grey override.
+- `docs/verification/screenshots/weapon_visual_qa/grenade.png`: grenade keeps the same source material zones and remains readable as the artillery item.
+- `docs/verification/screenshots/weapon_visual_qa/flamethrower.png`: flamethrower shows Sci-Fi source colors across body, grip and orange accent areas.
+- `docs/verification/screenshots/weapon_visual_qa/lasso.png`: crossbow/lasso is no longer side-on; the body projects forward from the camera with visible source orange/grey/black material zones.
+- `docs/verification/screenshots/weapon_visual_qa/taser_gun.png`: taser gun keeps the Sci-Fi pistol color accents and remains positioned in the lower-right viewmodel area.
+- `docs/verification/screenshots/weapon_visual_qa/redbull.png`: can uses the Kenney red/blue source material bands instead of a plain blue override.
+- `docs/verification/screenshots/weapon_visual_qa/portal_gun.png`: portal gun/crossbow is forward-facing rather than sideways and keeps source orange/grey/black material zones.
+
+## Lobby Public Match Actions
+
+Date: 2026-05-30
+
+- The visible lobby no longer exposes `Offline Dev Match`; offline/dev entry points remain available only to verification hooks.
+- The public host action now reads `Start` instead of `Host game`.
+- When the public host is not reachable or public IP detection fails, the public action enters a disabled `Venter på Host` state.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ python3 tools/runtime_smoke.py lobby-validation
+SMOKE_PASS lobby-validation: empty-IP lobby validation status works
+EXIT=0
+
+$ python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+
+$ python3 tools/runtime_smoke.py offline
+SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
+EXIT=0
+
+$ ./run.sh -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+EXIT=0
+
+$ ./run.sh -s tools/validate_public_ip_lookup.gd
+PUBLIC_IP_LOOKUP_PASS label=Start status=Public IP 203.0.113.77 matches Abel's host. Press Start. ...
+EXIT=0
+```
+
+Visual QA:
+
+- `docs/verification/screenshots/lobby_public_join_button.png` shows the lobby action row with only the public `Join` button; `Offline Dev Match` is absent and the button does not overlap the artillery selector.
+- `docs/verification/screenshots/lobby_public_waiting_host_button.png` shows the disabled `Venter på Host` button fitting inside its control and remaining readable.
+- `docs/verification/screenshots/lobby_public_start_button.png` shows the host-side `Start` button below the loadout selector, with the lobby still centered and uncluttered.
+
+## Bare Join Argument Override
+
+Date: 2026-05-30
+
+- Bare `./run.sh --join` now opens the lobby in forced client mode instead of immediately connecting to Abel's saved IP.
+- The override keeps the public action on `Join` even if the public IP lookup later reports Abel's host IP.
+- `./run.sh --join=<ip>` remains the direct-connect path used by automation and network smoke tests.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ ./run.sh --headless -- --join --smoke-test=join-override-lobby --smoke-timeout-sec=6
+SMOKE_PASS join-override-lobby: bare --join keeps lobby in client Join mode
+EXIT=0
+
+$ ./run.sh -s tools/validate_lobby_join_override.gd
+LOBBY_JOIN_OVERRIDE_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_override.png address=203.0.113.77
+EXIT=0
+
+$ python3 tools/runtime_smoke.py lobby-validation
+SMOKE_PASS lobby-validation: empty-IP lobby validation status works
+EXIT=0
+
+$ ./run.sh -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+EXIT=0
+
+$ ./run.sh -s tools/validate_public_ip_lookup.gd
+PUBLIC_IP_LOOKUP_PASS label=Start status=Public IP 203.0.113.77 matches Abel's host. Press Start. ...
+EXIT=0
+```
+
+Visual QA:
+
+- `docs/verification/screenshots/lobby_public_join_override.png` shows the centered lobby with the public action button reading `Join` below the artillery row.
+- The loadout preview rows still render and the action button does not overlap or push content outside the 1280x720 viewport.
+- The host-side public-IP path is still covered separately by `lobby_public_start_button.png`, so the override does not remove Abel's normal `Start` state when no `--join` override is used.
+
+## Run Script Git Pull
+
+Date: 2026-05-30
+
+- `./run.sh` and `run.cmd` now perform `git pull --ff-only --autostash` before resolving Godot and launching.
+- `SHOOTER_SKIP_GIT_SYNC=1` skips the pull for local tests/debug runs.
+- The launch scripts only pull; commit/push remains handled by `./udgiv.sh`.
+- `install.cmd` and `run.cmd` also search common winget package/link directories for `Godot*.exe`, so Windows does not depend on `PATH` being refreshed after install.
+
+Validation:
+
+```text
+$ bash -n run.sh
+EXIT=0
+
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --version
+4.6.3.stable.official.7d41c59c4
+EXIT=0
+```

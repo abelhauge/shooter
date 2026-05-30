@@ -82,11 +82,14 @@ var _p08_timeout_sec := 30.0
 var _p08_client_hold_sec := 18.0
 var _network_arg_requested_host := false
 var _network_arg_requested_join := false
+var _force_lobby_join_override := false
 var _verification_capture := ""
 var _dev_balance_dummy_enabled_for_next_game := false
 var _local_player_name := "Player"
 var _lobby_player_names_by_peer: Dictionary = {1: "Player"}
 var _pending_match_start_by_peer: Dictionary = {}
+var _persistent_host_requested := false
+var _headless_host_ready_printed := false
 
 func _ready() -> void:
 	_parse_smoke_args()
@@ -132,6 +135,8 @@ func _load_game_root() -> void:
 		_active_scene.set_selected_loadout(_selected_loadout)
 	if _active_scene.has_method("set_dev_balance_dummy_enabled"):
 		_active_scene.set_dev_balance_dummy_enabled(_dev_balance_dummy_enabled_for_next_game)
+	if _active_scene.has_method("set_persistent_host_enabled"):
+		_active_scene.set_persistent_host_enabled(_persistent_host_requested)
 	if _active_scene.has_method("set_network_session"):
 		_active_scene.set_network_session(_network_session)
 	add_child(_active_scene)
@@ -155,6 +160,8 @@ func _load_lobby() -> void:
 	lobby.join_requested.connect(_on_lobby_join_requested)
 	lobby.ready_requested.connect(_on_lobby_ready_requested)
 	lobby.start_requested.connect(_on_lobby_start_requested)
+	if _force_lobby_join_override and lobby.has_method("set_public_join_override"):
+		lobby.set_public_join_override(true)
 	if _network_session != null:
 		_network_session.start_lan_discovery()
 		_refresh_lobby_lan_hosts()
@@ -175,7 +182,7 @@ func _apply_network_args() -> bool:
 		if arg == "--host":
 			requested_host = true
 		elif arg == "--join":
-			join_address = LobbyMenu.ABEL_PUBLIC_JOIN_ADDRESS
+			_force_lobby_join_override = true
 		elif arg.begins_with("--join="):
 			join_address = arg.trim_prefix("--join=")
 		elif arg.begins_with("--port="):
@@ -183,9 +190,16 @@ func _apply_network_args() -> bool:
 		elif arg.begins_with("--name="):
 			_local_player_name = _sanitize_player_name(arg.trim_prefix("--name="))
 			_lobby_player_names_by_peer[1] = _local_player_name
+	if not requested_host and join_address == "" and not _force_lobby_join_override and _should_auto_host_headless():
+		requested_host = true
+		if _local_player_name == "Player":
+			_local_player_name = "Headless Host"
 	if requested_host:
 		_network_arg_requested_host = true
+		if DisplayServer.get_name() == "headless" and _smoke_test == "" and _verification_capture == "":
+			_persistent_host_requested = true
 		_game_scene_ready_by_peer.clear()
+		_headless_host_ready_printed = false
 		_lobby_player_names_by_peer = {1: _local_player_name}
 		_network_session.host(port)
 		return true
@@ -196,6 +210,9 @@ func _apply_network_args() -> bool:
 		_network_session.join(join_address, port)
 		return true
 	return false
+
+func _should_auto_host_headless() -> bool:
+	return DisplayServer.get_name() == "headless" and _smoke_test == "" and _verification_capture == ""
 
 func _parse_smoke_args() -> void:
 	for arg in OS.get_cmdline_user_args():
@@ -699,8 +716,8 @@ func _validate_p05a_capture_result(result: Dictionary, weapon_id: StringName, re
 			printerr("VERIFICATION_CAPTURE_FAIL p05a %s expected asset-backed GLB viewmodel: %s" % [String(weapon_id), str(summary)])
 			get_tree().quit(1)
 			return false
-		if weapon_id == &"shotgun" and not bool(summary.get("material_override", false)):
-			printerr("VERIFICATION_CAPTURE_FAIL p05a shotgun requires project-owned material override: %s" % str(summary))
+		if not bool(summary.get("has_curated_materials", false)):
+			printerr("VERIFICATION_CAPTURE_FAIL p05a %s expected source materials or curated material palette: %s" % [String(weapon_id), str(summary)])
 			get_tree().quit(1)
 			return false
 	else:
@@ -3742,6 +3759,22 @@ func _begin_smoke_test() -> void:
 			_finish_smoke_failure("empty-IP lobby validation did not show useful status")
 			return
 		_finish_smoke_success("empty-IP lobby validation status works")
+	elif _smoke_test == "join-override-lobby":
+		if not (_active_scene is LobbyMenu):
+			_finish_smoke_failure("join-override-lobby smoke expected lobby scene")
+			return
+		if not _force_lobby_join_override:
+			_finish_smoke_failure("join-override-lobby smoke expected bare --join argument")
+			return
+		var lobby := _active_scene as LobbyMenu
+		if lobby.smoke_get_public_action_label() != "Join":
+			_finish_smoke_failure("--join override did not set public action to Join: %s" % lobby.smoke_get_public_action_label())
+			return
+		lobby.smoke_force_public_ip(LobbyMenu.ABEL_PUBLIC_JOIN_ADDRESS)
+		if lobby.smoke_get_public_action_label() != "Join":
+			_finish_smoke_failure("public IP detection overrode bare --join mode: %s" % lobby.smoke_get_public_action_label())
+			return
+		_finish_smoke_success("bare --join keeps lobby in client Join mode")
 	elif _smoke_test == "weapons":
 		if not (_active_scene is LobbyMenu):
 			_finish_smoke_failure("weapons smoke expected lobby scene")
@@ -4112,7 +4145,10 @@ func _on_network_connected_to_host() -> void:
 func _on_network_connection_failed(reason: String) -> void:
 	if _verification_capture.begins_with("p08"):
 		print("VERIFICATION_CAPTURE_NETWORK_P08 connection_failed reason=%s %s" % [reason, _p08_connection_state_summary()])
-	_set_lobby_status(reason, false, false)
+	if _active_scene is LobbyMenu:
+		(_active_scene as LobbyMenu).set_public_host_waiting("Venter på Host.")
+	else:
+		_set_lobby_status(reason, false, false)
 	call_deferred("_restart_lan_discovery_if_lobby")
 
 func _on_network_peer_joined(peer_id: int) -> void:
@@ -4260,7 +4296,19 @@ func _mark_game_scene_ready(peer_id: int, is_ready: bool) -> void:
 	if _is_host_peer(peer_id) and is_ready:
 		if _network_session != null and _network_session.is_hosting:
 			_network_session.start_lan_advertising(_network_session.listen_port, "in_game")
+			_print_headless_host_ready_once()
 		_flush_pending_match_starts()
+
+func _print_headless_host_ready_once() -> void:
+	if not _persistent_host_requested or _headless_host_ready_printed:
+		return
+	if _network_session == null:
+		return
+	_headless_host_ready_printed = true
+	print("HEADLESS_HOST_READY mode=true_headless port=%d capacity=%d join_mid_game=true persistent=true" % [
+		_network_session.listen_port,
+		NetworkConstants.MAX_PLAYERS,
+	])
 
 func _is_host_peer(peer_id: int) -> bool:
 	if _network_session == null or not _network_session.is_active():

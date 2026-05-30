@@ -41,6 +41,9 @@ func get_runtime_summary() -> Dictionary:
 		"has_mesh": model_root != null and vertex_count > 0,
 		"vertex_count": vertex_count,
 		"material_override": apply_material_override,
+		"uses_source_materials": not apply_material_override,
+		"uses_named_material_palette": apply_material_override and use_named_material_palette,
+		"has_curated_materials": not apply_material_override or use_named_material_palette,
 	}
 
 func _load_glb_scene(path: String) -> Node3D:

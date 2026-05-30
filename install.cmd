@@ -187,8 +187,29 @@ if exist "%ROOT_DIR%.bin\godot.exe" (
   set "GODOT_BIN_RESOLVED=%ROOT_DIR%.bin\godot.exe"
   exit /b 0
 )
+call :find_godot_under "%ROOT_DIR%.bin"
+if not errorlevel 1 exit /b 0
 if exist "%ProgramFiles%\Godot\Godot.exe" (
   set "GODOT_BIN_RESOLVED=%ProgramFiles%\Godot\Godot.exe"
+  exit /b 0
+)
+call :find_godot_under "%ProgramFiles%\Godot"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%ProgramFiles%\GodotEngine"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%LOCALAPPDATA%\Microsoft\WinGet\Links"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%LOCALAPPDATA%\Microsoft\WinGet\Packages"
+if not errorlevel 1 exit /b 0
+call :find_godot_under "%LOCALAPPDATA%\Programs\Godot"
+if not errorlevel 1 exit /b 0
+exit /b 1
+
+:find_godot_under
+if "%~1"=="" exit /b 1
+if not exist "%~1" exit /b 1
+for /f "delims=" %%G in ('dir /b /s "%~1\Godot*.exe" 2^>nul') do (
+  set "GODOT_BIN_RESOLVED=%%G"
   exit /b 0
 )
 exit /b 1

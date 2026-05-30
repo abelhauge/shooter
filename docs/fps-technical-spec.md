@@ -56,9 +56,11 @@ Regler:
 - fremtidige agenter må ikke erstatte denne kontrakt med editor-only kørsel
 - scriptet må gerne udvides over tid, men kommandoerne skal forblive `./run.sh` og `run.cmd`
 - scriptet skal starte Godot-projektet fra repo-root uden at brugeren først skal vælge en scene manuelt
-- launch-scriptet må ikke committe, pull'e eller pushe; almindelig game/editor-start skal være uden git-sideeffekter
+- `./run.sh` og `run.cmd` laver før launch et `git pull --ff-only --autostash` på den aktive upstream branch, så lokale kørsler starter fra nyeste remote state; sæt `SHOOTER_SKIP_GIT_SYNC=1` for at springe sync over under tests eller lokal debug
 - publicering til GitHub skal ske eksplicit med `./udgiv.sh`, som auto-stager, committer, puller og pusher den aktive branch
-- `install.sh` og `install.cmd` skal kunne verificere lokale dependencies og bootstrappe Godot-import/cache på henholdsvis Unix/macOS/Linux og Windows
+- `./run.sh --join` åbner lobbyen i klient-mode og tvinger public action til `Join`, som hvis maskinens public IP ikke er Abels host-IP; `./run.sh --join=<ip>` er den direkte connect-variant til automation og smoke-tests
+- `./run.sh --headless` starter en ægte no-window Godot host, når hovedprojektet køres uden smoke/script/verification args. Den hoster på `NetworkConstants.DEFAULT_PORT` eller `--port=<port>`, printer `HEADLESS_HOST_READY`, tillader join mid-game og bliver kørende som persistent private host.
+- `install.sh` og `install.cmd` skal kunne verificere lokale dependencies og bootstrappe Godot-import/cache på henholdsvis Unix/macOS/Linux og Windows; Windows-scripts skal kunne finde winget-installeret Godot uden at kræve en ny terminal-session eller manuelt opdateret `PATH`
 - desktop runtime skal bruge Godots `Forward+` renderer; paa macOS betyder det Metal-rendering i normale GUI-runs
 - macOS-export skal beholde GPU-komprimerede texture formats slået til: `texture_format/etc2_astc=true` for Apple Silicon/universal exports og `texture_format/s3tc_bptc=true` som desktop fallback; `project.godot` skal importere begge VRAM compression families
 - GitHub macOS releases skal bygges paa en macOS runner og mindst ad-hoc signes foer upload til itch; fuld friktionsfri Mac-download kraever Apple Developer ID signing og notarization
@@ -636,6 +638,7 @@ V1 må bruge en lille lokal discovery-kanal til at finde private LAN-hosts uden 
 - Host-knappen starter en hostet kamp med det samme; der er ikke længere et obligatorisk ready/start-lobbytrin.
 - Nye peers der forbinder efter kampstart får en targeted `start_network_match` RPC, loader `GameRoot`, sender scene-ready tilbage til hosten og får derefter respawn/snapshot.
 - Nye peers må ikke sendes ind i kampen, før hostens egen `GameRoot` er scene-ready; peers der forbinder under host-load holdes pending, og LAN discovery viser først hosten som `in_game`, når hosten er klar.
+- Headless private host bruger samme readiness gate, men uden vindue eller lokal UI; den genstarter automatisk matchen efter results, så serverprocessen kan stå i baggrunden.
 - `NetworkConstants.MAX_ENET_CLIENTS` følger Godots ENet-loft på `4095` samtidige klienter; `MAX_PLAYERS` inkluderer hosten og er derfor `4096`.
 - Den reelle praktiske grænse er hostens maskine, netværk, map/spawn-readability og performance, ikke en 3v3-regel i gameplay-data.
 - P13 3v3 er fortsat en regressionstest for seks instanser, men den må ikke bruges som runtime-cap.
@@ -887,17 +890,23 @@ Kurateringsregel:
 ### Våbenbase
 
 - `Animated Guns Pack`
-  - brug: assault rifle og handgun i v1
+  - brug: assault rifle, handgun, shotgun, sniper og andre klassiske low-poly guns
   - rolle: grounded low-poly viewmodels
   - link: `https://quaternius.com/packs/animatedguns.html`
   - lokal importkilde: `assets/third_party/quaternius/animated_guns_pack/FBX`
-  - runtime-kuratering: P05 konverterer `Rifle.fbx` og `Pistol.fbx` til generated GLB assets under `assets/weapons/viewmodels/generated/`; wrapper-scenes skal bevare `source_fbx_path` som provenance og loade `generated_glb_path` i runtime
+  - runtime-kuratering: P05 konverterer FBX-filer til generated GLB assets under `assets/weapons/viewmodels/generated/`; wrapper-scenes skal bevare `source_fbx_path` som provenance og loade `generated_glb_path` i runtime
+  - materialekuratering: de lokale generated GLB-filer har ikke brugbare texture maps eller varierede source-farver, saa runtime viewmodels bruger projektets navngivne materialepalette for at undgaa flade graa silhouettes
 
 - `Ultimate Guns Pack`
   - brug: reservekilde til senere shotgun, sniper og andre udvidelser
   - rolle: sekundær våbenkilde når Animated Guns ikke dækker behovet
   - link: `https://quaternius.com/packs/ultimategun.html`
   - lokal status: reserve, ikke del af mandatory kickoff-import
+
+- `Quaternius Sci-Fi Modular Gun Pack` og `Kenney Food Kit`
+  - brug: sci-fi utility guns, throwables, knife og energy can
+  - rolle: kuraterede replacements for tidligere hjemmelavede modeller
+  - materialekuratering: GLTF/GLB source-materialer skal bevares i viewmodels, medmindre et asset mangler material-data helt
 
 ### Materialer og lys
 
@@ -921,9 +930,9 @@ Kurateringsregel:
 - Arena backdrop: `Downtown City MegaKit` fra `assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)`
 - Core traversal props: custom blockout meshes + samme materialsprog
 - Player avatars: `Ultimate Modular Men Pack` fra `assets/third_party/quaternius/ultimate_modular_men_pack/Individual Characters/glTF`
-- First-person rifle/pistol: `Animated Guns Pack` fra `assets/third_party/quaternius/animated_guns_pack/FBX`
-- Knife: custom low-poly prop
-- Smoke bomb: custom low-poly prop
+- First-person rifle/pistol/shotgun/sniper: `Animated Guns Pack` fra `assets/third_party/quaternius/animated_guns_pack/FBX` med curated material palette
+- Sci-fi utility weapons/throwables: `Quaternius Sci-Fi Modular Gun Pack` fra `assets/third_party/quaternius/scifi_modular_gun_pack/gltf` med source-materialer
+- Knife/energy can: `Kenney Food Kit` fra `assets/third_party/kenney/food_kit/glb` med source-materialer
 
 ## Implementeringsregler for agenter
 
