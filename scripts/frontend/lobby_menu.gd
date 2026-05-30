@@ -8,24 +8,41 @@ signal ready_requested()
 signal start_requested()
 
 const ABEL_PUBLIC_JOIN_ADDRESS := "203.0.113.77"
+const PUBLIC_IP_LOOKUP_URL := "https://api.ipify.org?format=json"
+const SLOT_WEAPON_ORDER := {
+	&"primary": [&"assault_rifle", &"shotgun", &"sniper", &"flamethrower"],
+	&"secondary": [&"handgun", &"portal_gun", &"lasso", &"taser_gun"],
+	&"melee": [&"knife"],
+	&"artillery": [&"smoke_bomb", &"grenade", &"redbull"],
+}
+
+enum PublicNetworkMode {
+	DETECTING,
+	HOST,
+	JOIN,
+}
 
 var _status_label: Label
 var _address_edit: LineEdit
 var _port_edit: LineEdit
 var _lan_hosts_option: OptionButton
 var _join_lan_button: Button
+var _public_action_button: Button
 var _ready_button: Button
 var _start_button: Button
-var _primary_option: OptionButton
-var _secondary_option: OptionButton
-var _melee_option: OptionButton
-var _artillery_option: OptionButton
+var _public_ip_request: HTTPRequest
 var _lan_hosts: Array[Dictionary] = []
+var _public_network_mode := PublicNetworkMode.DETECTING
+var _detected_public_ip := ""
+var _selected_weapon_by_slot: Dictionary = {}
+var _slot_buttons_by_weapon: Dictionary = {}
+var _slot_weapon_ids_by_slot: Dictionary = {}
 
 func _ready() -> void:
 	_build_ui()
-	set_status("Choose Offline, Host, or Join.")
+	set_status("Checking public IP...")
 	set_network_controls(false, false)
+	_begin_public_ip_detection()
 
 func set_status(text: String) -> void:
 	if _status_label != null:
@@ -50,7 +67,17 @@ func smoke_press_join(address: String, port: int) -> void:
 	_on_join_pressed()
 
 func smoke_press_join_abel() -> void:
-	_on_join_abel_pressed()
+	_public_network_mode = PublicNetworkMode.JOIN
+	_on_public_action_pressed()
+
+func smoke_press_public_action() -> void:
+	_on_public_action_pressed()
+
+func smoke_force_public_ip(public_ip: String) -> void:
+	_apply_detected_public_ip(public_ip)
+
+func smoke_get_public_action_label() -> String:
+	return _public_action_button.text if _public_action_button != null else ""
 
 func smoke_press_join_lan(index := 0) -> bool:
 	if _lan_hosts.is_empty() or index < 0 or index >= _lan_hosts.size():
@@ -73,18 +100,18 @@ func smoke_get_lan_host_count() -> int:
 
 func smoke_get_slot_weapon_ids() -> Dictionary:
 	return {
-		"primary": _option_weapon_ids(_primary_option),
-		"secondary": _option_weapon_ids(_secondary_option),
-		"melee": _option_weapon_ids(_melee_option),
-		"artillery": _option_weapon_ids(_artillery_option),
+		"primary": _slot_weapon_ids(&"primary"),
+		"secondary": _slot_weapon_ids(&"secondary"),
+		"melee": _slot_weapon_ids(&"melee"),
+		"artillery": _slot_weapon_ids(&"artillery"),
 	}
 
 func smoke_select_loadout(primary_id: StringName, secondary_id: StringName, melee_id: StringName, artillery_id: StringName) -> bool:
 	return (
-		_select_option_by_weapon_id(_primary_option, primary_id)
-		and _select_option_by_weapon_id(_secondary_option, secondary_id)
-		and _select_option_by_weapon_id(_melee_option, melee_id)
-		and _select_option_by_weapon_id(_artillery_option, artillery_id)
+		_select_weapon_for_slot(&"primary", primary_id)
+		and _select_weapon_for_slot(&"secondary", secondary_id)
+		and _select_weapon_for_slot(&"melee", melee_id)
+		and _select_weapon_for_slot(&"artillery", artillery_id)
 	)
 
 func _build_ui() -> void:
@@ -137,10 +164,12 @@ func _build_ui() -> void:
 	network_label.text = "NETWORK TARGET"
 	network_label.add_theme_font_size_override("font_size", 13)
 	network_label.add_theme_color_override("font_color", Color(0.96, 0.58, 0.28, 1.0))
+	network_label.visible = false
 	box.add_child(network_label)
 
 	var network_row := HBoxContainer.new()
 	network_row.add_theme_constant_override("separation", 10)
+	network_row.visible = false
 	box.add_child(network_row)
 	_address_edit = LineEdit.new()
 	_address_edit.placeholder_text = "Host IP / LAN target"
@@ -158,6 +187,7 @@ func _build_ui() -> void:
 
 	var lan_row := HBoxContainer.new()
 	lan_row.add_theme_constant_override("separation", 10)
+	lan_row.visible = false
 	box.add_child(lan_row)
 	_lan_hosts_option = OptionButton.new()
 	_lan_hosts_option.custom_minimum_size = Vector2(374, 34)
@@ -172,10 +202,10 @@ func _build_ui() -> void:
 	lan_row.add_child(_join_lan_button)
 	set_lan_hosts([])
 
-	_primary_option = _create_slot_option(box, "Primary", &"primary")
-	_secondary_option = _create_slot_option(box, "Secondary", &"secondary")
-	_melee_option = _create_slot_option(box, "Melee", &"melee")
-	_artillery_option = _create_slot_option(box, "Artillery", &"artillery")
+	_create_slot_selector(box, "Primary", &"primary")
+	_create_slot_selector(box, "Secondary", &"secondary")
+	_create_slot_selector(box, "Melee", &"melee")
+	_create_slot_selector(box, "Artillery", &"artillery")
 
 	var action_row := GridContainer.new()
 	action_row.columns = 2
@@ -189,23 +219,12 @@ func _build_ui() -> void:
 	offline_button.pressed.connect(_on_offline_pressed)
 	action_row.add_child(offline_button)
 
-	var host_button := Button.new()
-	host_button.text = "Host Private Match"
-	_style_button(host_button, Color(0.76, 0.38, 0.14, 1.0))
-	host_button.pressed.connect(_on_host_pressed)
-	action_row.add_child(host_button)
-
-	var join_button := Button.new()
-	join_button.text = "Join By IP"
-	_style_button(join_button, Color(0.20, 0.30, 0.34, 1.0))
-	join_button.pressed.connect(_on_join_pressed)
-	action_row.add_child(join_button)
-
-	var join_abel_button := Button.new()
-	join_abel_button.text = "Join Abel"
-	_style_button(join_abel_button, Color(0.32, 0.42, 0.70, 1.0))
-	join_abel_button.pressed.connect(_on_join_abel_pressed)
-	action_row.add_child(join_abel_button)
+	_public_action_button = Button.new()
+	_public_action_button.text = "Detecting..."
+	_public_action_button.disabled = true
+	_style_button(_public_action_button, Color(0.32, 0.42, 0.70, 1.0))
+	_public_action_button.pressed.connect(_on_public_action_pressed)
+	action_row.add_child(_public_action_button)
 
 	var ready_row := HBoxContainer.new()
 	ready_row.add_theme_constant_override("separation", 10)
@@ -253,26 +272,38 @@ func _read_port() -> int:
 	var port := int(_port_edit.text)
 	return NetworkConstants.DEFAULT_PORT if port <= 0 else port
 
-func _create_slot_option(parent: VBoxContainer, label_text: String, slot_type: StringName) -> OptionButton:
+func _create_slot_selector(parent: VBoxContainer, label_text: String, slot_type: StringName) -> void:
 	var label := Label.new()
 	label.text = label_text.to_upper()
 	label.add_theme_font_size_override("font_size", 13)
 	label.add_theme_color_override("font_color", Color(0.72, 0.86, 0.92, 1.0))
 	parent.add_child(label)
-	var option := OptionButton.new()
-	option.custom_minimum_size = Vector2(560, 34)
-	_style_option_button(option)
-	parent.add_child(option)
-	for weapon_id in WeaponController.WEAPON_PATHS.keys():
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	parent.add_child(row)
+
+	var slot_ids: Array[StringName] = []
+	_slot_buttons_by_weapon[slot_type] = {}
+	for weapon_id in SLOT_WEAPON_ORDER.get(slot_type, []):
+		if not WeaponController.WEAPON_PATHS.has(weapon_id):
+			continue
 		var definition: WeaponDefinition = load(WeaponController.WEAPON_PATHS[weapon_id])
 		if definition.slot_type != slot_type:
 			continue
-		option.add_item(definition.display_name)
-		var item_index := option.get_item_count() - 1
-		option.set_item_metadata(item_index, definition.weapon_id)
-		if _default_weapon_for_slot(slot_type) == definition.weapon_id:
-			option.select(item_index)
-	return option
+		slot_ids.append(definition.weapon_id)
+		var button := Button.new()
+		button.toggle_mode = true
+		button.custom_minimum_size = _weapon_card_size(slot_type)
+		button.text = _weapon_card_text(definition)
+		button.set_meta("weapon_id", definition.weapon_id)
+		button.set_meta("slot_type", slot_type)
+		button.pressed.connect(_on_weapon_card_pressed.bind(slot_type, definition.weapon_id))
+		row.add_child(button)
+		(_slot_buttons_by_weapon[slot_type] as Dictionary)[definition.weapon_id] = button
+	_selected_weapon_by_slot[slot_type] = _default_weapon_for_slot(slot_type)
+	_slot_weapon_ids_by_slot[slot_type] = slot_ids
+	_refresh_slot_buttons(slot_type)
 
 func _add_background_rect(position: Vector2, size: Vector2, color: Color) -> void:
 	var rect := ColorRect.new()
@@ -309,6 +340,17 @@ func _style_option_button(option: OptionButton) -> void:
 	option.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0, 1.0))
 	option.add_theme_font_size_override("font_size", 16)
 
+func _style_weapon_button(button: Button, definition: WeaponDefinition, selected: bool) -> void:
+	var color := _weapon_color(definition)
+	var base_color := color if selected else Color(0.026, 0.035, 0.038, 0.96)
+	var border_color := Color(1.0, 0.82, 0.42, 0.92) if selected else color.darkened(0.10)
+	var border_width := 2 if selected else 1
+	button.add_theme_stylebox_override("normal", _style_box(base_color, border_color, border_width, 7))
+	button.add_theme_stylebox_override("hover", _style_box(base_color.lightened(0.08), Color(1.0, 0.86, 0.52, 0.82), 2, 7))
+	button.add_theme_stylebox_override("pressed", _style_box(base_color.darkened(0.18), Color(1.0, 0.70, 0.32, 0.92), 2, 7))
+	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
+	button.add_theme_font_size_override("font_size", 13)
+
 func _style_button(button: Button, color: Color) -> void:
 	button.custom_minimum_size = Vector2(176, 38)
 	button.add_theme_stylebox_override("normal", _style_box(color.darkened(0.12), Color(0.92, 0.96, 1.0, 0.28), 1, 7))
@@ -326,33 +368,81 @@ func _default_weapon_for_slot(slot_type: StringName) -> StringName:
 		return &"knife"
 	return &"smoke_bomb"
 
-func _selected_weapon(option: OptionButton) -> StringName:
-	return StringName(str(option.get_item_metadata(option.selected)))
+func _selected_weapon(slot_type: StringName) -> StringName:
+	return StringName(str(_selected_weapon_by_slot.get(slot_type, _default_weapon_for_slot(slot_type))))
 
-func _option_weapon_ids(option: OptionButton) -> Array[StringName]:
+func _slot_weapon_ids(slot_type: StringName) -> Array[StringName]:
 	var weapon_ids: Array[StringName] = []
-	if option == null:
-		return weapon_ids
-	for index in range(option.get_item_count()):
-		weapon_ids.append(StringName(str(option.get_item_metadata(index))))
+	for weapon_id in _slot_weapon_ids_by_slot.get(slot_type, []):
+		weapon_ids.append(StringName(str(weapon_id)))
 	return weapon_ids
 
-func _select_option_by_weapon_id(option: OptionButton, weapon_id: StringName) -> bool:
-	if option == null:
+func _select_weapon_for_slot(slot_type: StringName, weapon_id: StringName) -> bool:
+	var buttons: Dictionary = _slot_buttons_by_weapon.get(slot_type, {})
+	if not buttons.has(weapon_id):
 		return false
-	for index in range(option.get_item_count()):
-		if StringName(str(option.get_item_metadata(index))) == weapon_id:
-			option.select(index)
-			return true
-	return false
+	_selected_weapon_by_slot[slot_type] = weapon_id
+	_refresh_slot_buttons(slot_type)
+	return true
 
 func _selected_loadout() -> Dictionary:
 	return {
-		"primary": _selected_weapon(_primary_option),
-		"secondary": _selected_weapon(_secondary_option),
-		"melee": _selected_weapon(_melee_option),
-		"artillery": _selected_weapon(_artillery_option),
+		"primary": _selected_weapon(&"primary"),
+		"secondary": _selected_weapon(&"secondary"),
+		"melee": _selected_weapon(&"melee"),
+		"artillery": _selected_weapon(&"artillery"),
 	}
+
+func _on_weapon_card_pressed(slot_type: StringName, weapon_id: StringName) -> void:
+	_select_weapon_for_slot(slot_type, weapon_id)
+
+func _refresh_slot_buttons(slot_type: StringName) -> void:
+	var buttons: Dictionary = _slot_buttons_by_weapon.get(slot_type, {})
+	var selected_id := _selected_weapon(slot_type)
+	for weapon_id in buttons.keys():
+		var button := buttons[weapon_id] as Button
+		var definition: WeaponDefinition = load(WeaponController.WEAPON_PATHS[StringName(str(weapon_id))])
+		var selected := StringName(str(weapon_id)) == selected_id
+		button.button_pressed = selected
+		_style_weapon_button(button, definition, selected)
+
+func _weapon_card_size(slot_type: StringName) -> Vector2:
+	if slot_type == &"melee":
+		return Vector2(560, 52)
+	return Vector2(134, 62)
+
+func _weapon_card_text(definition: WeaponDefinition) -> String:
+	var stat_line := ""
+	if definition.magazine_size > 0:
+		stat_line = "%d mag" % definition.magazine_size
+	elif definition.charges_max > 0:
+		stat_line = "%d charges" % definition.charges_max
+	elif definition.max_range_m > 0.0:
+		stat_line = "%.0fm" % definition.max_range_m
+	else:
+		stat_line = String(definition.fire_mode).to_upper()
+	if definition.body_damage > 0.0:
+		stat_line += "  %.0f dmg" % definition.body_damage
+	elif definition.effect_duration_sec > 0.0:
+		stat_line += "  %.0fs" % definition.effect_duration_sec
+	return "%s\n%s\n%s" % [definition.display_name, String(definition.fire_mode).to_upper(), stat_line]
+
+func _weapon_color(definition: WeaponDefinition) -> Color:
+	if definition.scope_enabled:
+		return Color(0.30, 0.44, 0.72, 1.0)
+	if definition.alt_action_type == &"stun":
+		return Color(0.18, 0.58, 0.70, 1.0)
+	if definition.alt_action_type == &"portal":
+		return Color(0.38, 0.32, 0.70, 1.0)
+	if definition.alt_action_type == &"speed_buff":
+		return Color(0.72, 0.40, 0.18, 1.0)
+	if definition.fire_mode == &"throwable":
+		return Color(0.38, 0.50, 0.32, 1.0)
+	if definition.fire_mode == &"beam":
+		return Color(0.72, 0.28, 0.16, 1.0)
+	if definition.fire_mode == &"melee":
+		return Color(0.52, 0.52, 0.58, 1.0)
+	return Color(0.24, 0.42, 0.50, 1.0)
 
 func set_lan_hosts(hosts: Array[Dictionary]) -> void:
 	_lan_hosts = hosts.duplicate(true)
@@ -386,7 +476,10 @@ func _on_host_pressed() -> void:
 func _on_join_pressed() -> void:
 	join_requested.emit(_address_edit.text.strip_edges(), _read_port(), _selected_loadout())
 
-func _on_join_abel_pressed() -> void:
+func _on_public_action_pressed() -> void:
+	if _public_network_mode == PublicNetworkMode.HOST:
+		_on_host_pressed()
+		return
 	_address_edit.text = ABEL_PUBLIC_JOIN_ADDRESS
 	_port_edit.text = str(NetworkConstants.DEFAULT_PORT)
 	join_requested.emit(ABEL_PUBLIC_JOIN_ADDRESS, NetworkConstants.DEFAULT_PORT, _selected_loadout())
@@ -415,3 +508,57 @@ func _on_ready_pressed() -> void:
 
 func _on_start_pressed() -> void:
 	start_requested.emit()
+
+func _begin_public_ip_detection() -> void:
+	_set_public_action_state(PublicNetworkMode.DETECTING)
+	_public_ip_request = HTTPRequest.new()
+	_public_ip_request.name = "PublicIpLookup"
+	_public_ip_request.timeout = 4.0
+	add_child(_public_ip_request)
+	_public_ip_request.request_completed.connect(_on_public_ip_request_completed)
+	var error := _public_ip_request.request(PUBLIC_IP_LOOKUP_URL)
+	if error != OK:
+		_apply_public_ip_detection_failure("Could not start public IP check: %s" % error_string(error))
+
+func _on_public_ip_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		_apply_public_ip_detection_failure("Public IP check failed. Join will use Abel's saved IP.")
+		return
+	var parsed = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		_apply_public_ip_detection_failure("Public IP check returned invalid data. Join will use Abel's saved IP.")
+		return
+	var public_ip := String((parsed as Dictionary).get("ip", "")).strip_edges()
+	if public_ip == "":
+		_apply_public_ip_detection_failure("Public IP check returned no address. Join will use Abel's saved IP.")
+		return
+	_apply_detected_public_ip(public_ip)
+
+func _apply_detected_public_ip(public_ip: String) -> void:
+	_detected_public_ip = public_ip.strip_edges()
+	if _detected_public_ip == ABEL_PUBLIC_JOIN_ADDRESS:
+		_set_public_action_state(PublicNetworkMode.HOST)
+		set_status("Public IP %s matches Abel's host. Press Host game." % _detected_public_ip)
+	else:
+		_set_public_action_state(PublicNetworkMode.JOIN)
+		set_status("Public IP %s is a client. Press Join to connect to Abel." % _detected_public_ip)
+
+func _apply_public_ip_detection_failure(message: String) -> void:
+	_set_public_action_state(PublicNetworkMode.JOIN)
+	set_status(message)
+
+func _set_public_action_state(mode: int) -> void:
+	_public_network_mode = mode
+	if _public_action_button == null:
+		return
+	_public_action_button.disabled = false
+	if mode == PublicNetworkMode.HOST:
+		_public_action_button.text = "Host game"
+		_style_button(_public_action_button, Color(0.76, 0.38, 0.14, 1.0))
+	elif mode == PublicNetworkMode.JOIN:
+		_public_action_button.text = "Join"
+		_style_button(_public_action_button, Color(0.32, 0.42, 0.70, 1.0))
+	else:
+		_public_action_button.text = "Detecting..."
+		_public_action_button.disabled = true
+		_style_button(_public_action_button, Color(0.20, 0.30, 0.34, 1.0))

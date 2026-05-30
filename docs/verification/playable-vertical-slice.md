@@ -2700,3 +2700,58 @@ Visual QA for `docs/verification/screenshots/weapon_visual_qa/`:
 - The new grenade/smoke captures show a handheld grenade-shaped asset instead of the previous sphere/launcher mismatch.
 - Flamethrower, lasso, taser gun and portal gun are visible in the lower-right weapon area without covering the crosshair or HUD panels.
 - Knife and Redbull are visible as external Kenney assets rather than project-owned procedural geometry.
+
+## Public IP Lobby Routing
+
+Date: 2026-05-30
+
+- Lobby online action now checks `https://api.ipify.org?format=json` through Godot `HTTPRequest`.
+- If the detected public IP equals Abel's hardcoded host IP, the lobby shows `Host game`.
+- Other machines show a single `Join` button that connects to Abel's saved public IP.
+- Launch args now support `--host` and `--join`; `--join` without an address uses Abel's saved public IP, while `--join=<ip>` still works for tests/manual overrides.
+- Weapon selection is now visual and horizontal: each loadout slot renders selectable weapon cards instead of dropdowns.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=skipped-headless address=203.0.113.77 port=24565
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py offline
+SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py lobby-validation
+SMOKE_PASS lobby-validation: empty-IP lobby validation status works
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py network
+SMOKE_PASS network-game: network host has 1 expected peer(s)
+SMOKE_PASS network-game: network client connected and game scene ready
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py lobby
+SMOKE_PASS lobby-host: lobby host started match with 1 expected peer(s)
+SMOKE_PASS lobby-client: lobby client joined, readied, and entered game
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -s tools/validate_lobby_join_abel.gd
+LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+EXIT=0
+```
+
+Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
+
+- The lobby shows one online action for the simulated client state: `Join`.
+- The old `Host Private Match`, `Join By IP`, and `Join Abel` buttons are no longer visible in the player-facing lobby action row.
+- Primary, secondary and artillery slots are horizontal rows of weapon cards; the selected cards use stronger color and a bright border.
+- Loadout card text remains readable in the panel, and the new button does not overlap the status text or right-side briefing panel.

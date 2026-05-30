@@ -162,6 +162,8 @@ func _apply_network_args() -> bool:
 	for arg in args:
 		if arg == "--host":
 			requested_host = true
+		elif arg == "--join":
+			join_address = LobbyMenu.ABEL_PUBLIC_JOIN_ADDRESS
 		elif arg.begins_with("--join="):
 			join_address = arg.trim_prefix("--join=")
 		elif arg.begins_with("--port="):
