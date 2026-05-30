@@ -3296,3 +3296,71 @@ $ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py weapons
 SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
 EXIT=0
 ```
+
+## Host Launch Lobby Flow
+
+Date: 2026-05-30
+
+- Bare GUI `./run.sh --host` now opens the lobby instead of prompting for a shell match password.
+- Bare GUI `--host` no longer auto-starts the game; the player can choose handle/loadout, enter match password in the lobby, then press `Start`.
+- Direct headless/automation host remains supported with `--password=<password>` or `SHOOTER_MATCH_PASSWORD`.
+- `project.godot` explicitly sets `renderer/rendering_method="forward_plus"` so static validation matches the existing GPU renderer contract.
+
+Validation:
+
+```text
+$ bash -n run.sh
+EXIT=0
+
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -- --host --smoke-test=host-lobby --smoke-timeout-sec=6
+SMOKE_PASS host-lobby: bare --host opens lobby without password prompt or auto-start
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py network --base-port 26500
+SMOKE_PASS network-game: network host has 1 expected peer(s)
+SMOKE_PASS network-game: network client connected and game scene ready
+EXIT=0
+```
+
+## Host Lobby Public IP
+
+Date: 2026-05-30
+
+- GUI `./run.sh --host` now opens a host-mode lobby that shows the host's public IP and port instead of asking the host to enter a Host IP.
+- The host-mode lobby keeps port, match password, loadout selection and the `Start` button visible before entering the match.
+- Public IP lookup uses an HTTP request from inside Godot; if lookup fails, hosting still works and the lobby shows a lookup-failed status.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -- --host --smoke-test=host-lobby --smoke-timeout-sec=6
+SMOKE_PASS host-lobby: bare --host opens lobby without password prompt or auto-start
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless -s tools/validate_lobby_host_public_ip.gd
+LOBBY_HOST_PUBLIC_IP_PASS screenshot=skipped-headless public_ip=Public IP: 203.0.113.42:51873
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -s tools/validate_lobby_host_public_ip.gd
+LOBBY_HOST_PUBLIC_IP_PASS screenshot=res://docs/verification/screenshots/lobby_host_public_ip.png public_ip=Public IP: 203.0.113.42:51873
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py network --base-port 26600
+SMOKE_PASS network-game: network host has 1 expected peer(s)
+SMOKE_PASS network-game: network client connected and game scene ready
+EXIT=0
+```
+
+Visual QA:
+
+- `docs/verification/screenshots/lobby_host_public_ip.png` shows host-mode with `HOST INFO` and `Public IP: 203.0.113.42:51873`.
+- The Host IP input and Join IP button are not visible in host-mode, so the host is not prompted to enter their own IP.
+- Port, password, `Start`, and the visual weapon selector are visible together at 1280x720; the artillery row continues below the visible area but the required host action is no longer pushed off-screen.

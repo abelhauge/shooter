@@ -83,6 +83,7 @@ var _p08_client_hold_sec := 18.0
 var _network_arg_requested_host := false
 var _network_arg_requested_join := false
 var _force_lobby_join_override := false
+var _startup_host_lobby_mode := false
 var _startup_lobby_status := ""
 var _startup_host_address := ""
 var _network_password := ""
@@ -162,6 +163,8 @@ func _load_lobby() -> void:
 	lobby.name = "LobbyMenu"
 	_clear_active_scene()
 	_active_scene = lobby
+	if _startup_host_lobby_mode and lobby.has_method("set_host_lobby_mode"):
+		lobby.set_host_lobby_mode(true)
 	add_child(lobby)
 	lobby.offline_requested.connect(_on_lobby_offline_requested)
 	lobby.host_requested.connect(_on_lobby_host_requested)
@@ -214,7 +217,12 @@ func _apply_network_args() -> bool:
 		requested_host = true
 		if _local_player_name == "Player":
 			_local_player_name = "Headless Host"
-	if _network_password == "" and (requested_host or join_address != ""):
+	var direct_host_requested := requested_host and _should_direct_host_from_args()
+	if requested_host and not direct_host_requested:
+		_startup_host_lobby_mode = true
+		_startup_lobby_status = "Choose loadout, enter match password, then press Start."
+		return false
+	if _network_password == "" and (direct_host_requested or join_address != ""):
 		_startup_lobby_status = "Enter a match password before hosting or joining."
 		if join_address != "":
 			_force_lobby_join_override = true
@@ -222,7 +230,7 @@ func _apply_network_args() -> bool:
 			printerr("MATCH_PASSWORD_REQUIRED use --password=<password> or SHOOTER_MATCH_PASSWORD for headless hosting")
 			get_tree().quit(1)
 		return false
-	if requested_host:
+	if direct_host_requested:
 		_network_arg_requested_host = true
 		if DisplayServer.get_name() == "headless" and _smoke_test == "" and _verification_capture == "":
 			_persistent_host_requested = true
@@ -249,6 +257,11 @@ func _apply_network_args() -> bool:
 
 func _should_auto_host_headless() -> bool:
 	return DisplayServer.get_name() == "headless" and _smoke_test == "" and _verification_capture == ""
+
+func _should_direct_host_from_args() -> bool:
+	if _smoke_test == "host-lobby":
+		return false
+	return DisplayServer.get_name() == "headless" or _smoke_test != "" or _verification_capture != ""
 
 func _parse_smoke_args() -> void:
 	for arg in OS.get_cmdline_user_args():
@@ -3810,6 +3823,27 @@ func _begin_smoke_test() -> void:
 			_finish_smoke_failure("--join override did not prompt for Host IP: %s" % lobby.smoke_get_status())
 			return
 		_finish_smoke_success("bare --join opens manual Host IP/password join prompt")
+	elif _smoke_test == "host-lobby":
+		if not (_active_scene is LobbyMenu):
+			_finish_smoke_failure("host-lobby smoke expected lobby scene")
+			return
+		if _network_session != null and _network_session.is_active():
+			_finish_smoke_failure("bare --host should not start a network session before pressing Start")
+			return
+		var lobby := _active_scene as LobbyMenu
+		if not lobby.smoke_has_manual_network_fields():
+			_finish_smoke_failure("--host lobby is missing manual network/password controls")
+			return
+		if not lobby.smoke_is_host_lobby_mode():
+			_finish_smoke_failure("--host lobby did not enter host mode")
+			return
+		if not lobby.smoke_get_public_ip_text().contains("Public IP"):
+			_finish_smoke_failure("--host lobby did not show public IP/share label: %s" % lobby.smoke_get_public_ip_text())
+			return
+		if not lobby.smoke_get_status().contains("press Start") and not lobby.smoke_get_status().contains("Press Start"):
+			_finish_smoke_failure("--host lobby did not prompt for Start: %s" % lobby.smoke_get_status())
+			return
+		_finish_smoke_success("bare --host opens lobby without password prompt or auto-start")
 	elif _smoke_test == "weapons":
 		if not (_active_scene is LobbyMenu):
 			_finish_smoke_failure("weapons smoke expected lobby scene")

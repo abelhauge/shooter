@@ -171,18 +171,28 @@ done
 append_match_password_if_needed() {
   local needs_password=0
   local has_password=0
+  local requested_host=0
+  local requested_direct_join=0
   local is_smoke_or_verification=0
+  local is_host_lobby_smoke=0
   local has_headless=0
   local has_non_headless_godot_arg=0
 
   if [[ "${#APP_ARGS[@]}" -gt 0 ]]; then
     for arg in "${APP_ARGS[@]}"; do
       case "$arg" in
-        --host|--join=*)
-          needs_password=1
+        --host)
+          requested_host=1
+          ;;
+        --join=*)
+          requested_direct_join=1
           ;;
         --password=*)
           has_password=1
+          ;;
+        --smoke-test=host-lobby)
+          is_smoke_or_verification=1
+          is_host_lobby_smoke=1
           ;;
         --smoke-*|--verification-capture=*)
           is_smoke_or_verification=1
@@ -201,6 +211,12 @@ append_match_password_if_needed() {
     done
   fi
 
+  if [[ "$requested_direct_join" -eq 1 ]]; then
+    needs_password=1
+  fi
+  if [[ "$requested_host" -eq 1 && ( "$has_headless" -eq 1 || ( "$is_smoke_or_verification" -eq 1 && "$is_host_lobby_smoke" -eq 0 ) ) ]]; then
+    needs_password=1
+  fi
   if [[ "$has_headless" -eq 1 && "$has_non_headless_godot_arg" -eq 0 && "$is_smoke_or_verification" -eq 0 ]]; then
     needs_password=1
   fi

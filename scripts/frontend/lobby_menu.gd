@@ -12,6 +12,7 @@ const SMOKE_MATCH_PASSWORD := "smoke-pass"
 const ITCH_TARGET := "abelhauge/shooter"
 const ITCH_PAGE_URL := "https://abelhauge.itch.io/shooter"
 const ITCH_LATEST_URL_TEMPLATE := "https://itch.io/api/1/x/wharf/latest?target=%s&channel_name=%s"
+const PUBLIC_IP_LOOKUP_URL := "https://api.ipify.org"
 const SLOT_WEAPON_ORDER := {
 	&"primary": [&"assault_rifle", &"shotgun", &"sniper", &"flamethrower"],
 	&"secondary": [&"handgun", &"portal_gun", &"lasso", &"taser_gun"],
@@ -20,6 +21,8 @@ const SLOT_WEAPON_ORDER := {
 }
 
 var _status_label: Label
+var _network_label: Label
+var _public_ip_label: Label
 var _name_edit: LineEdit
 var _address_edit: LineEdit
 var _port_edit: LineEdit
@@ -31,11 +34,14 @@ var _join_ip_button: Button
 var _ready_button: Button
 var _start_button: Button
 var _update_request: HTTPRequest
+var _public_ip_request: HTTPRequest
 var _update_banner: PanelContainer
 var _update_label: Label
 var _update_button: Button
 var _lan_hosts: Array[Dictionary] = []
 var _public_join_override := false
+var _host_lobby_mode := false
+var _detected_public_ip := ""
 var _latest_itch_version := ""
 var _selected_weapon_by_slot: Dictionary = {}
 var _slot_buttons_by_weapon: Dictionary = {}
@@ -47,7 +53,9 @@ var _preview_entries: Array[Dictionary] = []
 func _ready() -> void:
 	_build_ui()
 	_load_saved_network_settings()
-	if _address_edit != null and _address_edit.text.strip_edges() == "":
+	if _host_lobby_mode:
+		_apply_host_lobby_mode()
+	elif _address_edit != null and _address_edit.text.strip_edges() == "":
 		set_status("Enter Host IP, match password, then Join IP. Press Start to host.")
 	else:
 		set_status("Enter match password, then Join IP or Start.")
@@ -130,6 +138,16 @@ func smoke_get_status() -> String:
 
 func smoke_has_manual_network_fields() -> bool:
 	return _address_edit != null and _password_edit != null and _join_ip_button != null and _host_button != null
+
+func smoke_is_host_lobby_mode() -> bool:
+	return _host_lobby_mode
+
+func smoke_get_public_ip_text() -> String:
+	return _public_ip_label.text if _public_ip_label != null else ""
+
+func smoke_force_public_ip(address: String) -> void:
+	_detected_public_ip = _sanitize_public_ip(address)
+	_refresh_public_ip_label()
 
 func smoke_get_lan_host_count() -> int:
 	return _lan_hosts.size()
@@ -229,11 +247,19 @@ func _build_ui() -> void:
 	_status_label.add_theme_color_override("font_color", Color(0.86, 0.94, 0.92, 1.0))
 	box.add_child(_status_label)
 
-	var network_label := Label.new()
-	network_label.text = "NETWORK TARGET"
-	network_label.add_theme_font_size_override("font_size", 13)
-	network_label.add_theme_color_override("font_color", Color(0.96, 0.58, 0.28, 1.0))
-	box.add_child(network_label)
+	_network_label = Label.new()
+	_network_label.text = "NETWORK TARGET"
+	_network_label.add_theme_font_size_override("font_size", 13)
+	_network_label.add_theme_color_override("font_color", Color(0.96, 0.58, 0.28, 1.0))
+	box.add_child(_network_label)
+
+	_public_ip_label = Label.new()
+	_public_ip_label.visible = false
+	_public_ip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_public_ip_label.custom_minimum_size = Vector2(0, 26)
+	_public_ip_label.add_theme_font_size_override("font_size", 16)
+	_public_ip_label.add_theme_color_override("font_color", Color(0.84, 0.96, 1.0, 1.0))
+	box.add_child(_public_ip_label)
 
 	var network_row := HBoxContainer.new()
 	network_row.add_theme_constant_override("separation", 10)
@@ -250,6 +276,7 @@ func _build_ui() -> void:
 	_port_edit.text = str(NetworkConstants.DEFAULT_PORT)
 	_port_edit.custom_minimum_size = Vector2(106, 36)
 	_style_line_edit(_port_edit)
+	_port_edit.text_changed.connect(_on_port_text_changed)
 	network_row.add_child(_port_edit)
 
 	_password_edit = LineEdit.new()
@@ -275,11 +302,6 @@ func _build_ui() -> void:
 	lan_row.add_child(_join_lan_button)
 	set_lan_hosts([])
 
-	_create_slot_selector(box, "Primary", &"primary")
-	_create_slot_selector(box, "Secondary", &"secondary")
-	_create_slot_selector(box, "Melee", &"melee")
-	_create_slot_selector(box, "Artillery", &"artillery")
-
 	var action_row := GridContainer.new()
 	action_row.columns = 2
 	action_row.add_theme_constant_override("h_separation", 10)
@@ -299,6 +321,11 @@ func _build_ui() -> void:
 	_join_ip_button.custom_minimum_size = Vector2(236, 38)
 	_join_ip_button.pressed.connect(_on_join_pressed)
 	action_row.add_child(_join_ip_button)
+
+	_create_slot_selector(box, "Primary", &"primary")
+	_create_slot_selector(box, "Secondary", &"secondary")
+	_create_slot_selector(box, "Melee", &"melee")
+	_create_slot_selector(box, "Artillery", &"artillery")
 
 	var ready_row := HBoxContainer.new()
 	ready_row.add_theme_constant_override("separation", 10)
@@ -888,6 +915,74 @@ func _on_update_pressed() -> void:
 	var error := OS.shell_open(ITCH_PAGE_URL)
 	if error != OK:
 		push_warning("Could not open itch update page: %s" % error_string(error))
+
+func set_host_lobby_mode(enabled := true) -> void:
+	_host_lobby_mode = enabled
+	if is_node_ready():
+		_apply_host_lobby_mode()
+
+func _apply_host_lobby_mode() -> void:
+	if _network_label != null:
+		_network_label.text = "HOST INFO"
+	if _address_edit != null:
+		_address_edit.visible = false
+	if _join_ip_button != null:
+		_join_ip_button.visible = false
+	if _lan_hosts_option != null:
+		_lan_hosts_option.visible = false
+	if _join_lan_button != null:
+		_join_lan_button.visible = false
+	_refresh_public_ip_label()
+	set_status("Share your Public IP, choose loadout, enter match password, then press Start.")
+	_begin_public_ip_lookup()
+
+func _begin_public_ip_lookup() -> void:
+	if not _host_lobby_mode:
+		return
+	if _public_ip_request != null:
+		return
+	_public_ip_request = HTTPRequest.new()
+	_public_ip_request.name = "PublicIpLookup"
+	_public_ip_request.timeout = 5.0
+	add_child(_public_ip_request)
+	_public_ip_request.request_completed.connect(_on_public_ip_request_completed)
+	var error := _public_ip_request.request(PUBLIC_IP_LOOKUP_URL)
+	if error != OK:
+		_detected_public_ip = ""
+		_refresh_public_ip_label("Public IP lookup failed")
+
+func _on_public_ip_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		_detected_public_ip = ""
+		_refresh_public_ip_label("Public IP lookup failed")
+		return
+	_detected_public_ip = _sanitize_public_ip(body.get_string_from_utf8())
+	_refresh_public_ip_label()
+
+func _sanitize_public_ip(value: String) -> String:
+	var cleaned := value.strip_edges()
+	var allowed := ""
+	for index in range(cleaned.length()):
+		var character := cleaned.substr(index, 1)
+		if (character >= "0" and character <= "9") or character == "." or character == ":":
+			allowed += character
+	return allowed
+
+func _refresh_public_ip_label(prefix := "") -> void:
+	if _public_ip_label == null:
+		return
+	_public_ip_label.visible = _host_lobby_mode
+	var port_text := str(_read_port())
+	if _detected_public_ip != "":
+		_public_ip_label.text = "Public IP: %s:%s" % [_detected_public_ip, port_text]
+	elif prefix != "":
+		_public_ip_label.text = "Public IP: %s. Port: %s" % [prefix, port_text]
+	else:
+		_public_ip_label.text = "Public IP: looking up... Port: %s" % port_text
+
+func _on_port_text_changed(_new_text: String) -> void:
+	if _host_lobby_mode:
+		_refresh_public_ip_label()
 
 func _current_app_version() -> String:
 	var version := String(ProjectSettings.get_setting("application/config/version", "")).strip_edges()
