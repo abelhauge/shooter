@@ -8,6 +8,9 @@ var _map_provider: Node
 var _root: Control
 var _debug_label: Label
 var _combat_label: Label
+var _health_gauge_panel: PanelContainer
+var _health_gauge_fill: ColorRect
+var _health_gauge_label: Label
 var _feedback_label: Label
 var _match_label: Label
 var _perf_label: Label
@@ -35,6 +38,7 @@ func bind_map_provider(map_provider: Node) -> void:
 
 func get_runtime_smoke_summary() -> Dictionary:
 	_update_debug()
+	_update_health_gauge()
 	_update_combat()
 	_update_match()
 	_update_players()
@@ -44,6 +48,9 @@ func get_runtime_smoke_summary() -> Dictionary:
 	return {
 		"debug_text": _debug_label.text,
 		"combat_text": _combat_label.text,
+		"health_gauge_value": _health_gauge_fill.size.x if _health_gauge_fill != null else 0.0,
+		"health_gauge_text": _health_gauge_label.text if _health_gauge_label != null else "",
+		"has_health_gauge": _health_gauge_panel != null and _health_gauge_fill != null and _health_gauge_label != null,
 		"match_text": _match_label.text,
 		"players_text": _players_label.text,
 		"perf_text": _perf_label.text,
@@ -62,6 +69,7 @@ func _process(delta: float) -> void:
 		return
 	_feedback_timer = maxf(0.0, _feedback_timer - delta)
 	_update_debug()
+	_update_health_gauge()
 	_update_combat()
 	_update_match()
 	_update_players()
@@ -85,12 +93,13 @@ func _build_ui() -> void:
 	)
 
 	_combat_label = _add_readout_panel(
-		Vector2(18, 520),
-		Vector2(286, 182),
+		Vector2(18, 548),
+		Vector2(286, 154),
 		Color(0.018, 0.024, 0.030, 0.82),
 		Color(0.96, 0.44, 0.16, 0.75),
 		18
 	)
+	_build_health_gauge()
 
 	_match_label = _add_readout_panel(
 		Vector2(472, 14),
@@ -158,6 +167,46 @@ func _build_ui() -> void:
 	_add_crosshair_segment(Vector2(-2, -2), Vector2(4, 4), Color(0.96, 0.84, 0.32, 0.95))
 	_update_responsive_layout()
 
+func _build_health_gauge() -> void:
+	_health_gauge_panel = PanelContainer.new()
+	_health_gauge_panel.name = "HealthGauge"
+	_health_gauge_panel.position = Vector2(18, 510)
+	_health_gauge_panel.custom_minimum_size = Vector2(286, 32)
+	_health_gauge_panel.size = Vector2(286, 32)
+	_health_gauge_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.024, 0.030, 0.84), Color(0.28, 0.92, 0.50, 0.78)))
+	_root.add_child(_health_gauge_panel)
+
+	var gauge_root := Control.new()
+	gauge_root.custom_minimum_size = Vector2(286, 32)
+	_health_gauge_panel.add_child(gauge_root)
+
+	var background := ColorRect.new()
+	background.name = "HealthGaugeBackground"
+	background.position = Vector2(8, 8)
+	background.size = Vector2(270, 16)
+	background.color = Color(0.04, 0.08, 0.07, 0.95)
+	gauge_root.add_child(background)
+
+	_health_gauge_fill = ColorRect.new()
+	_health_gauge_fill.name = "HealthGaugeFill"
+	_health_gauge_fill.position = background.position
+	_health_gauge_fill.size = background.size
+	_health_gauge_fill.color = Color(0.20, 0.86, 0.42, 0.96)
+	gauge_root.add_child(_health_gauge_fill)
+
+	_health_gauge_label = Label.new()
+	_health_gauge_label.name = "HealthGaugeLabel"
+	_health_gauge_label.position = Vector2(8, 3)
+	_health_gauge_label.size = Vector2(270, 24)
+	_health_gauge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_health_gauge_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_health_gauge_label.add_theme_font_size_override("font_size", 15)
+	_health_gauge_label.add_theme_color_override("font_color", Color(0.96, 1.0, 0.94, 1.0))
+	_health_gauge_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.95))
+	_health_gauge_label.add_theme_constant_override("shadow_offset_x", 1)
+	_health_gauge_label.add_theme_constant_override("shadow_offset_y", 1)
+	gauge_root.add_child(_health_gauge_label)
+
 func _update_responsive_layout() -> void:
 	if _root == null:
 		return
@@ -191,6 +240,15 @@ func _update_responsive_layout() -> void:
 			286.0 if viewport_size.y >= 640.0 else 238.0
 		)
 		_players_label.custom_minimum_size = Vector2(panel_width - 24.0, panel_height - 18.0)
+	if _health_gauge_panel != null:
+		var compact_bottom := viewport_size.y < 640.0
+		_health_gauge_panel.position = Vector2(18.0, viewport_size.y - (188.0 if compact_bottom else 210.0))
+		_health_gauge_panel.size = Vector2(286.0, 32.0)
+	if _combat_label != null:
+		var combat_panel := _combat_label.get_parent().get_parent() as PanelContainer
+		if combat_panel != null:
+			combat_panel.position = Vector2(18.0, viewport_size.y - (150.0 if viewport_size.y < 640.0 else 172.0))
+			combat_panel.size = Vector2(286.0, 154.0)
 
 func _add_readout_panel(position: Vector2, size: Vector2, color: Color, border_color: Color, font_size: int) -> Label:
 	var panel := PanelContainer.new()
@@ -244,8 +302,24 @@ func _update_debug() -> void:
 		String(_player.movement_state),
 	]
 
-func _update_combat() -> void:
+func _update_health_gauge() -> void:
+	if _player == null or _health_gauge_fill == null or _health_gauge_label == null:
+		return
 	var health := _player.get_health_component()
+	var max_health := maxf(1.0, health.max_health)
+	var current_health := clampf(health.current_health, 0.0, max_health)
+	var ratio := current_health / max_health
+	var full_width := 270.0
+	_health_gauge_fill.size = Vector2(full_width * ratio, 16.0)
+	if ratio <= 0.25:
+		_health_gauge_fill.color = Color(0.94, 0.18, 0.14, 0.96)
+	elif ratio <= 0.55:
+		_health_gauge_fill.color = Color(0.96, 0.62, 0.18, 0.96)
+	else:
+		_health_gauge_fill.color = Color(0.20, 0.86, 0.42, 0.96)
+	_health_gauge_label.text = "HP  %d / %d" % [roundi(current_health), roundi(max_health)]
+
+func _update_combat() -> void:
 	var weapon_summary := _player.get_weapon_controller().get_active_summary()
 	var ammo_text := "%d / %d" % [weapon_summary["ammo_in_mag"], weapon_summary["reserve_ammo"]]
 	if weapon_summary["charges_max"] > 0:
@@ -256,8 +330,7 @@ func _update_combat() -> void:
 			float(weapon_summary.get("speed_multiplier", 1.0)),
 			float(weapon_summary.get("speed_buff_remaining_sec", 0.0)),
 		]
-	_combat_label.text = "HP: %d\nSlot: %s\nWeapon: %s\nAmmo: %s\nCooldown: %.2f%s%s" % [
-		roundi(health.current_health),
+	_combat_label.text = "Slot: %s\nWeapon: %s\nAmmo: %s\nCooldown: %.2f%s%s" % [
 		String(weapon_summary["slot"]),
 		weapon_summary["display_name"],
 		ammo_text,

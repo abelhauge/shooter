@@ -1417,7 +1417,7 @@ func run_p14_flamethrower_checks() -> Dictionary:
 		and is_equal_approx(float(flame_tuning.get("max_range_m", 0.0)), 12.0)
 		and bool(flame_tuning.get("supports_hold_fire", false))
 		and String(flame_tuning.get("alt_action_type", "")) == ""
-		and is_equal_approx(float(flame_tuning.get("propulsion_force", 0.0)), 40.0)
+		and is_equal_approx(float(flame_tuning.get("propulsion_force", 0.0)), 24.0)
 	)
 	var flame_result: Dictionary = await _run_p14_flamethrower_sequence(24)
 	var propulsion_result: Dictionary = _run_p14_flamethrower_propulsion_check()
@@ -4074,12 +4074,15 @@ func _run_hud_smoke_check() -> Dictionary:
 	var summary: Dictionary = hud.get_runtime_smoke_summary()
 	var debug_text := String(summary.get("debug_text", ""))
 	var combat_text := String(summary.get("combat_text", ""))
+	var health_gauge_text := String(summary.get("health_gauge_text", ""))
 	var match_text := String(summary.get("match_text", ""))
 	var perf_text := String(summary.get("perf_text", ""))
 	if not debug_text.contains("Speed:") or not debug_text.contains("State:"):
 		return {"ok": false, "error": "HUD debug readout missing movement state"}
-	if not combat_text.contains("HP:") or not combat_text.contains("Ammo:") or not combat_text.contains("Cooldown:"):
+	if not combat_text.contains("Ammo:") or not combat_text.contains("Cooldown:"):
 		return {"ok": false, "error": "HUD combat readout missing core fields"}
+	if not bool(summary.get("has_health_gauge", false)) or not health_gauge_text.contains("HP"):
+		return {"ok": false, "error": "HUD health gauge missing"}
 	if not match_text.contains("Blue") or not match_text.contains("Orange"):
 		return {"ok": false, "error": "HUD match readout missing team score"}
 	if not perf_text.contains("FPS:") or not perf_text.contains("Nodes:"):

@@ -135,6 +135,17 @@ func get_health_component() -> HealthComponent:
 func get_weapon_controller() -> WeaponController:
 	return weapon_controller
 
+func apply_damage(event: DamageEvent) -> bool:
+	if event == null or health_component == null:
+		return false
+	if not event.is_headshot and is_headshot_position(event.hit_position):
+		event.is_headshot = true
+	return health_component.apply_damage(event)
+
+func is_headshot_position(world_position: Vector3) -> bool:
+	var local_position := to_local(world_position)
+	return local_position.y >= _standing_eye_height - 0.18
+
 func apply_stun(duration_sec: float) -> bool:
 	if not health_component.is_alive:
 		return false

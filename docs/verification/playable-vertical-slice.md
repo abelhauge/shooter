@@ -3221,3 +3221,77 @@ $ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --version
 4.6.3.stable.official.7d41c59c4
 EXIT=0
 ```
+
+## Player Damage And Health Gauge
+
+Date: 2026-05-30
+
+- `PlayerController` now exposes `apply_damage(event)` and forwards hits to its `HealthComponent`, including simple headshot classification from hit height.
+- The HUD now shows HP as a dedicated horizontal gauge instead of only inline combat text.
+- The combat readout keeps weapon/ammo/cooldown fields below the gauge.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless -s tools/validate_player_damage_health_gauge.gd
+PLAYER_DAMAGE_HEALTH_GAUGE_PASS health=63.0 gauge=HP  63 / 100 width=170.1 screenshot=skipped-headless
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -s tools/validate_player_damage_health_gauge.gd
+PLAYER_DAMAGE_HEALTH_GAUGE_PASS health=63.0 gauge=HP  63 / 100 width=170.1 screenshot=res://docs/verification/screenshots/player_damage_health_gauge.png
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless -s tools/validate_hud_layout.gd
+HUD_LAYOUT_VALIDATION_PASS ...
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless -s tools/validate_assault_rifle_damage.gd
+ASSAULT_RIFLE_DAMAGE_PASS ...
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py offline
+SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+```
+
+Visual QA:
+
+- `docs/verification/screenshots/player_damage_health_gauge.png` shows the new horizontal HP gauge at the lower-left HUD, reading `HP 63 / 100` after a 37-damage validation hit.
+- The health fill is visibly reduced to roughly two thirds width and remains green, matching the player still being alive.
+- The gauge sits above the weapon/ammo/cooldown combat panel without overlapping the crosshair, minimap, player list or match timer.
+
+## Flamethrower Propulsion Balance
+
+Date: 2026-05-30
+
+- `data/weapons/flamethrower.tres` now uses `propulsion_force = 24.0`, down from `40.0`.
+- This reduces both the horizontal recoil/movement impulse and the upward lift per fuel tick while keeping primary-fire fuel propulsion active.
+- The propulsion validator now enforces the lower tuned range instead of the previous high-lift expectation.
+
+Validation:
+
+```text
+$ python3 tools/validate_static.py
+static validation passed
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless --script res://tools/validate_flamethrower_primary_propulsion.gd
+FLAMETHROWER_PRIMARY_PROPULSION_PASS ammo_before=100 ammo_after=99 velocity_after=(-1.024772, 1.92, -1.09437)
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --script res://tools/validate_flamethrower_primary_propulsion.gd
+FLAMETHROWER_PRIMARY_PROPULSION_PASS ammo_before=100 ammo_after=99 velocity_after=(-1.024772, 1.92, -1.09437)
+EXIT=0
+
+$ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py weapons
+SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
+EXIT=0
+```
