@@ -217,6 +217,10 @@ def assert_run_script_git_pull() -> None:
 
     windows_run_script = read("run.cmd")
     for expected in (
+        'for %%I in ("%~dp0.") do set "ROOT_DIR=%%~fI"',
+        'set "ROOT_DIR=%ROOT_DIR:"=%"',
+        'pushd "%ROOT_DIR%"',
+        "--path .",
         "SHOOTER_SKIP_GIT_SYNC",
         'git -C "%ROOT_DIR%" pull --ff-only --autostash',
         ":sync_github_before_run",
@@ -233,9 +237,21 @@ def assert_run_script_git_pull() -> None:
     ):
         if forbidden in windows_run_script:
             fail(f"run.cmd should not auto-write to git during launch: {forbidden}")
+    for forbidden in (
+        "%ROOT_DIR%project.godot",
+        '--path "%ROOT_DIR%"',
+        "%ROOT_DIR%.godot",
+        "%ROOT_DIR%.bin",
+    ):
+        if forbidden in windows_run_script:
+            fail(f"run.cmd should use normalized ROOT_DIR with explicit separators: {forbidden}")
 
     windows_install_script = read("install.cmd")
     for expected in (
+        'for %%I in ("%~dp0.") do set "ROOT_DIR=%%~fI"',
+        'set "ROOT_DIR=%ROOT_DIR:"=%"',
+        'pushd "%ROOT_DIR%"',
+        "--path .",
         "%LOCALAPPDATA%\\Microsoft\\WinGet\\Packages",
         "%LOCALAPPDATA%\\Microsoft\\WinGet\\Links",
         ":find_godot_under",
@@ -243,6 +259,15 @@ def assert_run_script_git_pull() -> None:
     ):
         if expected not in windows_install_script:
             fail(f"install.cmd missing Windows Godot resolver behavior {expected}")
+    for forbidden in (
+        "%ROOT_DIR%project.godot",
+        '--path "%ROOT_DIR%"',
+        "%ROOT_DIR%tools\\validate_static.py",
+        "%ROOT_DIR%assets\\",
+        "%ROOT_DIR%.bin",
+    ):
+        if forbidden in windows_install_script:
+            fail(f"install.cmd should use normalized ROOT_DIR with explicit separators: {forbidden}")
 
 
 def main() -> None:

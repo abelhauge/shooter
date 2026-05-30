@@ -1,8 +1,9 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "ROOT_DIR=%~dp0"
-set "PROJECT_FILE=%ROOT_DIR%project.godot"
+for %%I in ("%~dp0.") do set "ROOT_DIR=%%~fI"
+set "ROOT_DIR=%ROOT_DIR:"=%"
+set "PROJECT_FILE=%ROOT_DIR%\project.godot"
 set "EDITOR_START_SCENE=res://scenes/maps/art/arena_downtown_01_art.tscn"
 
 if not exist "%PROJECT_FILE%" (
@@ -16,6 +17,9 @@ if errorlevel 1 exit /b !errorlevel!
 call :resolve_godot
 if errorlevel 1 exit /b !errorlevel!
 
+pushd "%ROOT_DIR%" >nul
+if errorlevel 1 exit /b !errorlevel!
+
 set "IS_EDITOR=0"
 set "BOOTSTRAP_CACHE=1"
 if not "%~1"=="" (
@@ -27,22 +31,36 @@ if "%SHOOTER_SKIP_IMPORT_BOOTSTRAP%"=="1" set "BOOTSTRAP_CACHE=0"
 if "%BOOTSTRAP_CACHE%"=="1" (
   if "%IS_EDITOR%"=="1" (
     echo Importing Godot assets before opening the editor... 1>&2
-    "%GODOT_BIN_RESOLVED%" --headless --import --path "%ROOT_DIR%"
-    if errorlevel 1 exit /b !errorlevel!
+    "%GODOT_BIN_RESOLVED%" --headless --import --path .
+    if errorlevel 1 (
+      set "RUN_EXIT=!errorlevel!"
+      popd >nul
+      exit /b !RUN_EXIT!
+    )
     if "%SHOOTER_EDITOR_START_SCENE%"=="" set "SHOOTER_EDITOR_START_SCENE=%EDITOR_START_SCENE%"
     call :configure_editor_start_scene "!SHOOTER_EDITOR_START_SCENE!"
-    if errorlevel 1 exit /b !errorlevel!
+    if errorlevel 1 (
+      set "RUN_EXIT=!errorlevel!"
+      popd >nul
+      exit /b !RUN_EXIT!
+    )
   ) else (
-    if not exist "%ROOT_DIR%.godot\global_script_class_cache.cfg" (
+    if not exist "%ROOT_DIR%\.godot\global_script_class_cache.cfg" (
       echo Bootstrapping Godot import/class cache... 1>&2
-      "%GODOT_BIN_RESOLVED%" --headless --import --path "%ROOT_DIR%"
-      if errorlevel 1 exit /b !errorlevel!
+      "%GODOT_BIN_RESOLVED%" --headless --import --path .
+      if errorlevel 1 (
+        set "RUN_EXIT=!errorlevel!"
+        popd >nul
+        exit /b !RUN_EXIT!
+      )
     )
   )
 )
 
-"%GODOT_BIN_RESOLVED%" --path "%ROOT_DIR%" %*
-exit /b !errorlevel!
+"%GODOT_BIN_RESOLVED%" --path . %*
+set "RUN_EXIT=!errorlevel!"
+popd >nul
+exit /b !RUN_EXIT!
 
 :parse_run_arg
 if /I "%~1"=="--editor" set "IS_EDITOR=1"
@@ -116,11 +134,11 @@ if not errorlevel 1 (
     exit /b 0
   )
 )
-if exist "%ROOT_DIR%.bin\godot.exe" (
-  set "GODOT_BIN_RESOLVED=%ROOT_DIR%.bin\godot.exe"
+if exist "%ROOT_DIR%\.bin\godot.exe" (
+  set "GODOT_BIN_RESOLVED=%ROOT_DIR%\.bin\godot.exe"
   exit /b 0
 )
-call :find_godot_under "%ROOT_DIR%.bin"
+call :find_godot_under "%ROOT_DIR%\.bin"
 if not errorlevel 1 exit /b 0
 if exist "%ProgramFiles%\Godot\Godot.exe" (
   set "GODOT_BIN_RESOLVED=%ProgramFiles%\Godot\Godot.exe"
@@ -150,8 +168,8 @@ for /f "delims=" %%G in ('dir /b /s "%~1\Godot*.exe" 2^>nul') do (
 exit /b 1
 
 :configure_editor_start_scene
-set "LAYOUT_FILE=%ROOT_DIR%.godot\editor\editor_layout.cfg"
-if not exist "%ROOT_DIR%.godot\editor" mkdir "%ROOT_DIR%.godot\editor"
+set "LAYOUT_FILE=%ROOT_DIR%\.godot\editor\editor_layout.cfg"
+if not exist "%ROOT_DIR%\.godot\editor" mkdir "%ROOT_DIR%\.godot\editor"
 (
   echo [EditorNode]
   echo.

@@ -1,8 +1,9 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "ROOT_DIR=%~dp0"
-set "PROJECT_FILE=%ROOT_DIR%project.godot"
+for %%I in ("%~dp0.") do set "ROOT_DIR=%%~fI"
+set "ROOT_DIR=%ROOT_DIR:"=%"
+set "PROJECT_FILE=%ROOT_DIR%\project.godot"
 set "CHECK_ONLY=0"
 set "BOOTSTRAP_IMPORT=1"
 
@@ -51,12 +52,16 @@ call :check_asset_baseline
 
 if "%BOOTSTRAP_IMPORT%"=="1" (
   echo ==^> Bootstrapping Godot import/class cache
-  "%GODOT_BIN_RESOLVED%" --headless --import --path "%ROOT_DIR%"
+  pushd "%ROOT_DIR%" >nul
   if errorlevel 1 exit /b !errorlevel!
+  "%GODOT_BIN_RESOLVED%" --headless --import --path .
+  set "INSTALL_EXIT=!errorlevel!"
+  popd >nul
+  if not "!INSTALL_EXIT!"=="0" exit /b !INSTALL_EXIT!
 )
 
 echo ==^> Running static validation
-%PYTHON_CMD% "%ROOT_DIR%tools\validate_static.py"
+%PYTHON_CMD% "%ROOT_DIR%\tools\validate_static.py"
 if errorlevel 1 exit /b !errorlevel!
 
 echo ==^> Install check complete. Start the game with run.cmd or the editor with run.cmd --editor
@@ -183,11 +188,11 @@ if not errorlevel 1 (
     exit /b 0
   )
 )
-if exist "%ROOT_DIR%.bin\godot.exe" (
-  set "GODOT_BIN_RESOLVED=%ROOT_DIR%.bin\godot.exe"
+if exist "%ROOT_DIR%\.bin\godot.exe" (
+  set "GODOT_BIN_RESOLVED=%ROOT_DIR%\.bin\godot.exe"
   exit /b 0
 )
-call :find_godot_under "%ROOT_DIR%.bin"
+call :find_godot_under "%ROOT_DIR%\.bin"
 if not errorlevel 1 exit /b 0
 if exist "%ProgramFiles%\Godot\Godot.exe" (
   set "GODOT_BIN_RESOLVED=%ProgramFiles%\Godot\Godot.exe"
@@ -216,15 +221,15 @@ exit /b 1
 
 :check_asset_baseline
 set "MISSING_ASSETS=0"
-if not exist "%ROOT_DIR%assets\third_party\quaternius\downtown_city_megakit\Exports\glTF (Godot)\Building_Large_2.gltf" (
+if not exist "%ROOT_DIR%\assets\third_party\quaternius\downtown_city_megakit\Exports\glTF (Godot)\Building_Large_2.gltf" (
   echo WARN: Missing local asset baseline file: assets/third_party/quaternius/downtown_city_megakit/Exports/glTF (Godot)/Building_Large_2.gltf 1>&2
   set "MISSING_ASSETS=1"
 )
-if not exist "%ROOT_DIR%assets\third_party\quaternius\ultimate_modular_men_pack\Individual Characters\glTF\Swat.gltf" (
+if not exist "%ROOT_DIR%\assets\third_party\quaternius\ultimate_modular_men_pack\Individual Characters\glTF\Swat.gltf" (
   echo WARN: Missing local asset baseline file: assets/third_party/quaternius/ultimate_modular_men_pack/Individual Characters/glTF/Swat.gltf 1>&2
   set "MISSING_ASSETS=1"
 )
-if not exist "%ROOT_DIR%assets\third_party\quaternius\animated_guns_pack\FBX\Rifle.fbx" (
+if not exist "%ROOT_DIR%\assets\third_party\quaternius\animated_guns_pack\FBX\Rifle.fbx" (
   echo WARN: Missing local asset baseline file: assets/third_party/quaternius/animated_guns_pack/FBX/Rifle.fbx 1>&2
   set "MISSING_ASSETS=1"
 )

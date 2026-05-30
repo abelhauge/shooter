@@ -3205,6 +3205,7 @@ Date: 2026-05-30
 - `SHOOTER_SKIP_GIT_SYNC=1` skips the pull for local tests/debug runs.
 - The launch scripts only pull; commit/push remains handled by `./udgiv.sh`.
 - `install.cmd` and `run.cmd` also search common winget package/link directories for `Godot*.exe`, so Windows does not depend on `PATH` being refreshed after install.
+- `run.cmd` and `install.cmd` normalize `%~dp0` into an unquoted `ROOT_DIR`, then run Godot from that directory with `--path .` so Windows project paths cannot pick up an extra trailing quote.
 
 Validation:
 
