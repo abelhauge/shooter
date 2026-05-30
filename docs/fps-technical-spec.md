@@ -58,7 +58,10 @@ Regler:
 - scriptet skal starte Godot-projektet fra repo-root uden at brugeren først skal vælge en scene manuelt
 - `./run.sh` og `run.cmd` laver før launch et `git pull --ff-only --autostash` på den aktive upstream branch, så lokale kørsler starter fra nyeste remote state; sæt `SHOOTER_SKIP_GIT_SYNC=1` for at springe sync over under tests eller lokal debug
 - publicering til GitHub skal ske eksplicit med `./udgiv.sh`, som auto-stager, committer, puller og pusher den aktive branch
-- `./run.sh --join` åbner lobbyen i klient-mode og tvinger public action til `Join`, som hvis maskinens public IP ikke er Abels host-IP; `./run.sh --join=<ip>` er den direkte connect-variant til automation og smoke-tests
+- Der maa ikke ligge en hardcoded public host-IP i projektet. Første klient-launch beder spilleren indtaste Host IP manuelt og gemmer kun den senest brugte Host IP lokalt i `user://`, ikke i repoet.
+- Standard ENet-porten er flyttet til `51873`; LAN-discovery bruger `51874`. Brug stadig `--port=<port>` hvis en host eksplicit skal ligge på en anden port.
+- Host skal sætte et match-password før ENet-sessionen accepterer spillere i lobby/kamp. GUI-host indtaster password i lobbyen; direkte `./run.sh --host` og auto-headless host kan bruge `--password=<password>`, `SHOOTER_MATCH_PASSWORD`, eller den skjulte `run.sh` terminalprompt.
+- `./run.sh --join` åbner lobbyen i klient-mode og beder om Host IP + match-password; `./run.sh --join=<ip> --password=<password>` er den direkte connect-variant til automation og smoke-tests
 - `./run.sh --headless` starter en ægte no-window Godot host, når hovedprojektet køres uden smoke/script/verification args. Den hoster på `NetworkConstants.DEFAULT_PORT` eller `--port=<port>`, printer `HEADLESS_HOST_READY`, tillader join mid-game og bliver kørende som persistent private host.
 - `install.sh` og `install.cmd` skal kunne verificere lokale dependencies og bootstrappe Godot-import/cache på henholdsvis Unix/macOS/Linux og Windows; Windows-scripts skal kunne finde winget-installeret Godot uden at kræve en ny terminal-session eller manuelt opdateret `PATH`
 - desktop runtime skal bruge Godots `Forward+` renderer; paa macOS betyder det Metal-rendering i normale GUI-runs

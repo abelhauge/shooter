@@ -37,6 +37,7 @@ var _balance_dummy: DummyTarget
 var _dev_balance_dummy_enabled := false
 var _local_player_name := "Player"
 var _network_player_names: Dictionary = {1: "Player"}
+var _authorized_network_peer_ids: Dictionary = {1: true}
 var _persistent_host_enabled := false
 
 func _ready() -> void:
@@ -78,6 +79,13 @@ func set_network_peer_scene_ready(peer_id: int, is_ready: bool) -> void:
 		and multiplayer.is_server()
 		and peer_id != network_session.local_peer_id()
 	):
+		if not _is_network_peer_authorized(peer_id):
+			return
+		var had_state := _network_player_states.has(peer_id)
+		_ensure_remote_proxy(peer_id)
+		_ensure_network_player_state(peer_id)
+		if not had_state:
+			_respawn_network_peer(peer_id)
 		_send_current_respawn_to_peer(peer_id)
 		_send_authoritative_snapshot_to_peer(peer_id)
 
@@ -100,6 +108,32 @@ func set_network_player_names(player_names: Dictionary) -> void:
 		_network_player_names[int(peer_id)] = sanitized
 		if _network_player_states.has(peer_id):
 			(_network_player_states[peer_id] as Dictionary)["player_name"] = sanitized
+
+func set_authorized_network_peer_ids(peer_ids: Dictionary) -> void:
+	_authorized_network_peer_ids.clear()
+	for peer_id in peer_ids.keys():
+		if bool(peer_ids[peer_id]):
+			_authorized_network_peer_ids[int(peer_id)] = true
+
+func authorize_network_peer(peer_id: int, player_name := "") -> void:
+	if peer_id <= 0:
+		return
+	_authorized_network_peer_ids[peer_id] = true
+	var sanitized_name := _sanitize_player_name(player_name)
+	if sanitized_name != "":
+		_network_player_names[peer_id] = sanitized_name
+		if _network_player_states.has(peer_id):
+			(_network_player_states[peer_id] as Dictionary)["player_name"] = sanitized_name
+	if network_session == null or not network_session.is_active() or not multiplayer.is_server():
+		return
+	if peer_id == network_session.local_peer_id():
+		return
+	var had_state := _network_player_states.has(peer_id)
+	_ensure_remote_proxy(peer_id)
+	_ensure_network_player_state(peer_id)
+	if not had_state:
+		_respawn_network_peer(peer_id)
+	_send_authoritative_snapshot()
 
 func set_dev_balance_dummy_enabled(enabled: bool) -> void:
 	_dev_balance_dummy_enabled = enabled
@@ -4463,6 +4497,8 @@ func _update_network_sync(delta: float) -> void:
 		)
 
 func _on_network_peer_joined(peer_id: int) -> void:
+	if multiplayer.is_server() and not _is_network_peer_authorized(peer_id):
+		return
 	if peer_id != network_session.local_peer_id():
 		_ensure_remote_proxy(peer_id)
 	if multiplayer.is_server():
@@ -4534,6 +4570,17 @@ func _is_network_peer_scene_ready(peer_id: int) -> bool:
 		return true
 	return bool(_network_game_ready_peers.get(peer_id, false))
 
+func _is_network_peer_authorized(peer_id: int) -> bool:
+	if peer_id <= 0:
+		return false
+	if network_session == null or not network_session.is_active():
+		return true
+	if not multiplayer.is_server():
+		return true
+	if peer_id == network_session.local_peer_id():
+		return true
+	return bool(_authorized_network_peer_ids.get(peer_id, false))
+
 func _ready_remote_peer_ids() -> Array:
 	var peers := []
 	if network_session == null or not network_session.is_active():
@@ -4541,6 +4588,8 @@ func _ready_remote_peer_ids() -> Array:
 	for peer_id_key in _network_player_states.keys():
 		var peer_id := int(peer_id_key)
 		if peer_id == network_session.local_peer_id():
+			continue
+		if not _is_network_peer_authorized(peer_id):
 			continue
 		if _is_network_peer_scene_ready(peer_id):
 			peers.append(peer_id)
@@ -5037,6 +5086,8 @@ func submit_player_transform(position: Vector3, yaw: float, pitch: float, state:
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
 		return
+	if not _is_network_peer_authorized(sender):
+		return
 	var player_state := _ensure_network_player_state(sender)
 	if float(player_state.get("stun_remaining_sec", 0.0)) > 0.0:
 		return
@@ -5055,6 +5106,8 @@ func submit_player_identity(player_name: String) -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
 		return
+	if not _is_network_peer_authorized(sender):
+		return
 	var sanitized := _sanitize_player_name(player_name)
 	_network_player_names[sender] = sanitized
 	var state := _ensure_network_player_state(sender)
@@ -5072,7 +5125,7 @@ func submit_fire_request(weapon_id: StringName, origin: Vector3, direction: Vect
 	if not multiplayer.is_server():
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	if sender != 0:
+	if sender != 0 and _is_network_peer_authorized(sender):
 		_process_authoritative_fire(sender, weapon_id, origin, direction, shooter_velocity)
 
 @rpc("any_peer", "reliable")
@@ -5080,7 +5133,7 @@ func submit_reload_request(weapon_id: StringName) -> void:
 	if not multiplayer.is_server():
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	if sender != 0:
+	if sender != 0 and _is_network_peer_authorized(sender):
 		_process_authoritative_reload(sender, weapon_id)
 
 @rpc("any_peer", "reliable")
@@ -5088,7 +5141,7 @@ func submit_slot_change(slot: StringName) -> void:
 	if not multiplayer.is_server():
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	if sender != 0:
+	if sender != 0 and _is_network_peer_authorized(sender):
 		_process_authoritative_slot_change(sender, slot)
 
 @rpc("authority", "reliable")

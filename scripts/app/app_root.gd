@@ -83,6 +83,12 @@ var _p08_client_hold_sec := 18.0
 var _network_arg_requested_host := false
 var _network_arg_requested_join := false
 var _force_lobby_join_override := false
+var _startup_lobby_status := ""
+var _startup_host_address := ""
+var _network_password := ""
+var _authenticated_peer_ids: Dictionary = {1: true}
+var _pending_auth_by_peer: Dictionary = {}
+var _client_password_accepted := false
 var _verification_capture := ""
 var _dev_balance_dummy_enabled_for_next_game := false
 var _local_player_name := "Player"
@@ -131,6 +137,8 @@ func _load_game_root() -> void:
 		_active_scene.set_local_player_name(_local_player_name)
 	if _active_scene.has_method("set_network_player_names"):
 		_active_scene.set_network_player_names(_lobby_player_names_by_peer)
+	if _active_scene.has_method("set_authorized_network_peer_ids"):
+		_active_scene.set_authorized_network_peer_ids(_authenticated_peer_ids)
 	if _active_scene.has_method("set_selected_loadout"):
 		_active_scene.set_selected_loadout(_selected_loadout)
 	if _active_scene.has_method("set_dev_balance_dummy_enabled"):
@@ -160,8 +168,14 @@ func _load_lobby() -> void:
 	lobby.join_requested.connect(_on_lobby_join_requested)
 	lobby.ready_requested.connect(_on_lobby_ready_requested)
 	lobby.start_requested.connect(_on_lobby_start_requested)
+	if _startup_host_address != "" and lobby.has_method("set_manual_host_address"):
+		lobby.set_manual_host_address(_startup_host_address)
+	if _network_password != "" and lobby.has_method("set_match_password"):
+		lobby.set_match_password(_network_password)
 	if _force_lobby_join_override and lobby.has_method("set_public_join_override"):
 		lobby.set_public_join_override(true)
+	if _startup_lobby_status != "":
+		lobby.set_status(_startup_lobby_status)
 	if _network_session != null:
 		_network_session.start_lan_discovery()
 		_refresh_lobby_lan_hosts()
@@ -178,6 +192,9 @@ func _apply_network_args() -> bool:
 	var requested_host := false
 	var join_address := ""
 	var port := NetworkConstants.DEFAULT_PORT
+	var env_password := OS.get_environment("SHOOTER_MATCH_PASSWORD").strip_edges()
+	if env_password != "":
+		_network_password = env_password
 	for arg in args:
 		if arg == "--host":
 			requested_host = true
@@ -185,15 +202,26 @@ func _apply_network_args() -> bool:
 			_force_lobby_join_override = true
 		elif arg.begins_with("--join="):
 			join_address = arg.trim_prefix("--join=")
+			_startup_host_address = join_address
 		elif arg.begins_with("--port="):
 			port = int(arg.trim_prefix("--port="))
 		elif arg.begins_with("--name="):
 			_local_player_name = _sanitize_player_name(arg.trim_prefix("--name="))
 			_lobby_player_names_by_peer[1] = _local_player_name
+		elif arg.begins_with("--password="):
+			_network_password = arg.trim_prefix("--password=").strip_edges()
 	if not requested_host and join_address == "" and not _force_lobby_join_override and _should_auto_host_headless():
 		requested_host = true
 		if _local_player_name == "Player":
 			_local_player_name = "Headless Host"
+	if _network_password == "" and (requested_host or join_address != ""):
+		_startup_lobby_status = "Enter a match password before hosting or joining."
+		if join_address != "":
+			_force_lobby_join_override = true
+		if DisplayServer.get_name() == "headless" and _should_auto_host_headless():
+			printerr("MATCH_PASSWORD_REQUIRED use --password=<password> or SHOOTER_MATCH_PASSWORD for headless hosting")
+			get_tree().quit(1)
+		return false
 	if requested_host:
 		_network_arg_requested_host = true
 		if DisplayServer.get_name() == "headless" and _smoke_test == "" and _verification_capture == "":
@@ -201,14 +229,22 @@ func _apply_network_args() -> bool:
 		_game_scene_ready_by_peer.clear()
 		_headless_host_ready_printed = false
 		_lobby_player_names_by_peer = {1: _local_player_name}
+		_authenticated_peer_ids = {1: true}
+		_pending_auth_by_peer.clear()
+		_client_password_accepted = false
 		_network_session.host(port)
 		return true
 	elif join_address != "":
 		_network_arg_requested_join = true
 		_game_scene_ready_by_peer.clear()
 		_lobby_player_names_by_peer = {1: _local_player_name}
+		_authenticated_peer_ids.clear()
+		_pending_auth_by_peer.clear()
+		_client_password_accepted = false
 		_network_session.join(join_address, port)
 		return true
+	elif _force_lobby_join_override:
+		_startup_lobby_status = "Enter Host IP and match password, then press Join IP."
 	return false
 
 func _should_auto_host_headless() -> bool:
@@ -3767,14 +3803,13 @@ func _begin_smoke_test() -> void:
 			_finish_smoke_failure("join-override-lobby smoke expected bare --join argument")
 			return
 		var lobby := _active_scene as LobbyMenu
-		if lobby.smoke_get_public_action_label() != "Join":
-			_finish_smoke_failure("--join override did not set public action to Join: %s" % lobby.smoke_get_public_action_label())
+		if not lobby.smoke_has_manual_network_fields():
+			_finish_smoke_failure("--join override lobby is missing manual host/password controls")
 			return
-		lobby.smoke_force_public_ip(LobbyMenu.ABEL_PUBLIC_JOIN_ADDRESS)
-		if lobby.smoke_get_public_action_label() != "Join":
-			_finish_smoke_failure("public IP detection overrode bare --join mode: %s" % lobby.smoke_get_public_action_label())
+		if not lobby.smoke_get_status().contains("Host IP"):
+			_finish_smoke_failure("--join override did not prompt for Host IP: %s" % lobby.smoke_get_status())
 			return
-		_finish_smoke_success("bare --join keeps lobby in client Join mode")
+		_finish_smoke_success("bare --join opens manual Host IP/password join prompt")
 	elif _smoke_test == "weapons":
 		if not (_active_scene is LobbyMenu):
 			_finish_smoke_failure("weapons smoke expected lobby scene")
@@ -3907,6 +3942,8 @@ func _tick_lobby_client_smoke(delta: float) -> void:
 		return
 	if _network_session.is_connection_ready():
 		_smoke_connected_to_host = true
+	if _smoke_connected_to_host and not _client_password_accepted:
+		return
 	if _smoke_connected_to_host and not _smoke_ready_sent:
 		_smoke_ready_sent = true
 		if _active_scene is LobbyMenu:
@@ -3926,28 +3963,38 @@ func _tick_lan_discovery_host_smoke() -> void:
 		return
 	if _lobby_ready_by_peer.size() < _smoke_expected_peers + 1:
 		return
-	for ready in _lobby_ready_by_peer.values():
-		if not bool(ready):
+	for peer_id in _lobby_ready_by_peer.keys():
+		if not bool(_lobby_ready_by_peer[peer_id]):
 			return
+		var typed_peer_id := int(peer_id)
+		if typed_peer_id == 1:
+			continue
+		if not _is_peer_authenticated(typed_peer_id):
+			return
+	_smoke_connected_hold_sec += get_process_delta_time()
+	if _smoke_connected_hold_sec < 1.0:
+		return
 	_finish_smoke_success("LAN discovery host advertised and received %d ready peer(s)" % _smoke_expected_peers)
 
-func _tick_lan_discovery_client_smoke(delta: float) -> void:
+func _tick_lan_discovery_client_smoke(_delta: float) -> void:
 	if _network_session == null:
 		return
 	if _network_session.is_connection_ready():
 		_smoke_connected_to_host = true
+	if _smoke_connected_to_host and _is_game_scene_ready():
+		_smoke_connected_hold_sec += get_process_delta_time()
+		if _smoke_connected_hold_sec >= 1.5:
+			_finish_smoke_success("LAN discovery client joined discovered host and entered game")
+		return
 	if _smoke_connected_to_host:
+		if not _client_password_accepted:
+			return
 		if not _smoke_ready_sent:
 			_smoke_ready_sent = true
 			if _active_scene is LobbyMenu:
 				(_active_scene as LobbyMenu).smoke_press_ready()
 			else:
 				_on_lobby_ready_requested()
-			_smoke_connected_hold_sec = 0.0
-		else:
-			_smoke_connected_hold_sec += delta
-		if _smoke_ready_sent and _smoke_connected_hold_sec >= 1.0:
-			_finish_smoke_success("LAN discovery client joined discovered host and sent ready")
 		return
 	if not (_active_scene is LobbyMenu):
 		return
@@ -4093,10 +4140,17 @@ func _on_lobby_offline_requested(loadout: Dictionary) -> void:
 	_network_session.close()
 	_load_game_root()
 
-func _on_lobby_host_requested(port: int, loadout: Dictionary) -> void:
+func _on_lobby_host_requested(port: int, password: String, loadout: Dictionary) -> void:
 	_apply_selected_loadout(loadout)
 	_dev_balance_dummy_enabled_for_next_game = false
+	_network_password = password.strip_edges()
+	if _network_password == "":
+		_set_lobby_status("Enter a match password before hosting.", false, false)
+		return
 	_game_scene_ready_by_peer.clear()
+	_authenticated_peer_ids = {1: true}
+	_pending_auth_by_peer.clear()
+	_client_password_accepted = false
 	var error := _network_session.host(port)
 	if error == OK:
 		_lobby_ready_by_peer = {1: true}
@@ -4104,13 +4158,20 @@ func _on_lobby_host_requested(port: int, loadout: Dictionary) -> void:
 		start_network_match.rpc()
 		_load_game_root()
 
-func _on_lobby_join_requested(address: String, port: int, loadout: Dictionary) -> void:
+func _on_lobby_join_requested(address: String, port: int, password: String, loadout: Dictionary) -> void:
 	_apply_selected_loadout(loadout)
 	_dev_balance_dummy_enabled_for_next_game = false
 	if address == "":
 		_set_lobby_status("Enter a host IP address before joining.", false, false)
 		return
+	_network_password = password.strip_edges()
+	if _network_password == "":
+		_set_lobby_status("Enter the match password before joining.", false, false)
+		return
 	_game_scene_ready_by_peer.clear()
+	_authenticated_peer_ids.clear()
+	_pending_auth_by_peer.clear()
+	_client_password_accepted = false
 	var error := _network_session.join(address, port)
 	if error == OK:
 		_set_lobby_status("Connecting to %s:%d..." % [address, port], false, false)
@@ -4138,24 +4199,40 @@ func _on_network_hosting_started(port: int) -> void:
 
 func _on_network_connected_to_host() -> void:
 	_smoke_connected_to_host = true
-	_set_lobby_status("Connected. Waiting for host to be ready...", false, false)
-	if _is_game_scene_ready():
-		call_deferred("_notify_host_game_scene_ready")
+	_set_lobby_status("Connected. Sending match password...", false, false)
+	_send_join_password_to_host()
 
 func _on_network_connection_failed(reason: String) -> void:
 	if _verification_capture.begins_with("p08"):
 		print("VERIFICATION_CAPTURE_NETWORK_P08 connection_failed reason=%s %s" % [reason, _p08_connection_state_summary()])
 	if _active_scene is LobbyMenu:
-		(_active_scene as LobbyMenu).set_public_host_waiting("Venter på Host.")
+		_set_lobby_status(reason, false, false)
 	else:
 		_set_lobby_status(reason, false, false)
 	call_deferred("_restart_lan_discovery_if_lobby")
 
 func _on_network_peer_joined(peer_id: int) -> void:
 	if multiplayer.is_server():
+		_pending_auth_by_peer[peer_id] = true
+		_lobby_player_names_by_peer[peer_id] = "Pending %d" % peer_id
+		_set_lobby_status("Peer %d connected. Waiting for match password." % peer_id, false, false)
+		return
+
+func _accept_authenticated_peer(peer_id: int, player_name: String) -> void:
+	if not multiplayer.is_server():
+		return
+	_pending_auth_by_peer.erase(peer_id)
+	_authenticated_peer_ids[peer_id] = true
+	var sanitized_name := _sanitize_player_name(player_name)
+	if sanitized_name == "":
+		sanitized_name = "Peer %d" % peer_id
+	_lobby_player_names_by_peer[peer_id] = sanitized_name
+	_push_authenticated_peers_to_active_scene()
+	if _active_scene != null and _active_scene.has_method("authorize_network_peer"):
+		_active_scene.authorize_network_peer(peer_id, sanitized_name)
+	if multiplayer.is_server():
 		var match_in_progress := _active_scene != null and not (_active_scene is LobbyMenu)
 		_lobby_ready_by_peer[peer_id] = match_in_progress
-		_lobby_player_names_by_peer[peer_id] = "Peer %d" % peer_id
 		_game_scene_ready_by_peer.erase(peer_id)
 		if match_in_progress:
 			_queue_or_send_match_start_to_peer(peer_id)
@@ -4173,6 +4250,8 @@ func _send_match_start_to_peer(peer_id: int) -> void:
 		return
 	if _network_session == null or not _network_session.is_hosting:
 		return
+	if not _is_peer_authenticated(peer_id):
+		return
 	if not _is_host_game_ready():
 		_pending_match_start_by_peer[peer_id] = true
 		return
@@ -4184,12 +4263,19 @@ func _send_match_start_to_peer(peer_id: int) -> void:
 func _on_network_peer_left(peer_id: int) -> void:
 	_lobby_ready_by_peer.erase(peer_id)
 	_lobby_player_names_by_peer.erase(peer_id)
+	_authenticated_peer_ids.erase(peer_id)
+	_pending_auth_by_peer.erase(peer_id)
+	_push_authenticated_peers_to_active_scene()
 	_mark_game_scene_ready(peer_id, false)
 	_set_lobby_status(_build_lobby_status_text(), false, multiplayer.is_server())
 
 func _on_network_session_closed() -> void:
 	_game_scene_ready_by_peer.clear()
 	_pending_match_start_by_peer.clear()
+	_pending_auth_by_peer.clear()
+	_client_password_accepted = false
+	_authenticated_peer_ids = {1: true}
+	_push_authenticated_peers_to_active_scene()
 
 func _on_lan_hosts_changed(_hosts: Array) -> void:
 	_refresh_lobby_lan_hosts()
@@ -4210,12 +4296,18 @@ func _set_lobby_status(text: String, show_ready: bool, show_start: bool) -> void
 		lobby.set_status(text)
 		lobby.set_network_controls(show_ready, show_start)
 
+func _push_authenticated_peers_to_active_scene() -> void:
+	if _active_scene != null and _active_scene.has_method("set_authorized_network_peer_ids"):
+		_active_scene.set_authorized_network_peer_ids(_authenticated_peer_ids)
+
 func _build_lobby_status_text() -> String:
 	var ready_count := 0
 	for ready in _lobby_ready_by_peer.values():
 		if bool(ready):
 			ready_count += 1
-	return "Lobby peers: %d. Ready: %d. Host can start when ready." % [_lobby_ready_by_peer.size(), ready_count]
+	var pending_count := _pending_auth_by_peer.size()
+	var suffix := " Pending password: %d." % pending_count if pending_count > 0 else ""
+	return "Lobby peers: %d. Ready: %d. Host can start when ready.%s" % [_lobby_ready_by_peer.size(), ready_count, suffix]
 
 func _apply_selected_loadout(loadout: Dictionary) -> void:
 	_local_player_name = _sanitize_player_name(String(loadout.get("player_name", _local_player_name)))
@@ -4247,12 +4339,62 @@ func _sanitize_player_name(raw_name: String) -> String:
 	sanitized = sanitized.strip_edges()
 	return sanitized if sanitized != "" else "Player"
 
+func _is_peer_authenticated(peer_id: int) -> bool:
+	return bool(_authenticated_peer_ids.get(peer_id, false))
+
+func _send_join_password_to_host() -> void:
+	if _network_session == null or not _network_session.is_client or not _network_session.is_connection_ready():
+		return
+	if _network_password == "":
+		_set_lobby_status("Enter the match password before joining.", false, false)
+		return
+	submit_join_password.rpc_id(1, _network_password, _local_player_name)
+
+func _disconnect_peer_after_rejection(peer_id: int) -> void:
+	if multiplayer.multiplayer_peer != null and multiplayer.is_server():
+		multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+
+@rpc("any_peer", "reliable")
+func submit_join_password(password: String, player_name := "") -> void:
+	if not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0:
+		return
+	if _network_password == "" or password.strip_edges() != _network_password:
+		_pending_auth_by_peer.erase(sender)
+		_authenticated_peer_ids.erase(sender)
+		_lobby_ready_by_peer.erase(sender)
+		_lobby_player_names_by_peer.erase(sender)
+		_push_authenticated_peers_to_active_scene()
+		join_password_rejected.rpc_id(sender, "Invalid match password.")
+		call_deferred("_disconnect_peer_after_rejection", sender)
+		return
+	join_password_accepted.rpc_id(sender)
+	_accept_authenticated_peer(sender, player_name)
+
+@rpc("authority", "reliable")
+func join_password_accepted() -> void:
+	_client_password_accepted = true
+	_set_lobby_status("Password accepted. Waiting for host to be ready...", false, false)
+	if _is_game_scene_ready():
+		call_deferred("_notify_host_game_scene_ready")
+
+@rpc("authority", "reliable")
+func join_password_rejected(reason := "Invalid match password.") -> void:
+	_client_password_accepted = false
+	_set_lobby_status(reason, false, false)
+	if _network_session != null:
+		_network_session.close()
+
 @rpc("any_peer", "reliable")
 func submit_lobby_ready(is_ready: bool, player_name := "") -> void:
 	if not multiplayer.is_server():
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
+		return
+	if not _is_peer_authenticated(sender):
 		return
 	_lobby_ready_by_peer[sender] = is_ready
 	_lobby_player_names_by_peer[sender] = _sanitize_player_name(player_name)
@@ -4273,11 +4415,15 @@ func submit_game_scene_ready(player_name := "") -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:
 		return
+	if not _is_peer_authenticated(sender):
+		return
 	_lobby_player_names_by_peer[sender] = _sanitize_player_name(player_name)
 	_mark_game_scene_ready(sender, true)
 
 func _notify_host_game_scene_ready() -> void:
 	if _network_session == null or not _network_session.is_client or not _network_session.is_connection_ready():
+		return
+	if not _client_password_accepted:
 		return
 	if not _is_game_scene_ready():
 		return

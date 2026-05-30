@@ -1,10 +1,10 @@
 extends SceneTree
 
 const LOBBY_SCENE := preload("res://scenes/frontend/lobby_menu.tscn")
-const OUTPUT_PATH := "res://docs/verification/screenshots/lobby_public_join_button.png"
-const WAITING_OUTPUT_PATH := "res://docs/verification/screenshots/lobby_public_waiting_host_button.png"
-const START_OUTPUT_PATH := "res://docs/verification/screenshots/lobby_public_start_button.png"
+const OUTPUT_PATH := "res://docs/verification/screenshots/lobby_manual_join_button.png"
+const START_OUTPUT_PATH := "res://docs/verification/screenshots/lobby_manual_start_button.png"
 const EXPECTED_ADDRESS := "203.0.113.77"
+const EXPECTED_PASSWORD := "validation-pass"
 
 var _join_event := {}
 var _host_event := {}
@@ -13,6 +13,7 @@ func _initialize() -> void:
 	_validate.call_deferred()
 
 func _validate() -> void:
+	OS.set_environment("SHOOTER_DISABLE_NETWORK_SETTINGS", "1")
 	root.size = Vector2i(1280, 720)
 	var lobby: LobbyMenu = LOBBY_SCENE.instantiate()
 	root.add_child(lobby)
@@ -22,7 +23,11 @@ func _validate() -> void:
 	for _index in range(4):
 		await process_frame
 
-	lobby.smoke_force_public_ip("203.0.113.77")
+	if not lobby.smoke_has_manual_network_fields():
+		_fail("manual Host IP/password controls were not found")
+		return
+	lobby.smoke_set_host_address(EXPECTED_ADDRESS)
+	lobby.smoke_set_match_password(EXPECTED_PASSWORD)
 	lobby.smoke_force_latest_itch_version("99.99.99")
 	if not lobby.smoke_is_update_banner_visible():
 		_fail("Forced newer itch version did not show update banner")
@@ -33,12 +38,12 @@ func _validate() -> void:
 	if _find_button_by_text(lobby, "Offline Dev Match") != null:
 		_fail("Offline Dev Match button should not be visible in the lobby")
 		return
-	var join_button := _find_button_by_text(lobby, "Join")
+	var join_button := _find_button_by_text(lobby, "Join IP")
 	if join_button == null:
-		_fail("Join button was not found")
+		_fail("Join IP button was not found")
 		return
 	if not join_button.visible:
-		_fail("Join button is not visible")
+		_fail("Join IP button is not visible")
 		return
 
 	if DisplayServer.get_name() != "headless":
@@ -46,7 +51,7 @@ func _validate() -> void:
 		if not _save_screenshot(OUTPUT_PATH):
 			return
 
-	lobby.smoke_press_public_action()
+	lobby.smoke_press_join_ip()
 	if _join_event.is_empty():
 		_fail("Join did not emit join_requested")
 		return
@@ -56,45 +61,40 @@ func _validate() -> void:
 	if int(_join_event.get("port", 0)) != NetworkConstants.DEFAULT_PORT:
 		_fail("Join emitted wrong port: %s" % str(_join_event))
 		return
-
-	lobby.smoke_force_public_host_waiting()
-	if lobby.smoke_get_public_action_label() != "Venter på Host":
-		_fail("Missing waiting-for-host public action label")
+	if String(_join_event.get("password", "")) != EXPECTED_PASSWORD:
+		_fail("Join emitted wrong password: %s" % str(_join_event))
 		return
-	if DisplayServer.get_name() != "headless":
-		await RenderingServer.frame_post_draw
-		if not _save_screenshot(WAITING_OUTPUT_PATH):
-			return
 
-	lobby.smoke_force_public_ip(EXPECTED_ADDRESS)
-	if lobby.smoke_get_public_action_label() != "Start":
-		_fail("Abel public IP did not switch button to Start")
-		return
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		if not _save_screenshot(START_OUTPUT_PATH):
 			return
-	lobby.smoke_press_public_action()
+	lobby.smoke_press_host(NetworkConstants.DEFAULT_PORT)
 	if _host_event.is_empty():
 		_fail("Start did not emit host_requested")
 		return
 	if int(_host_event.get("port", 0)) != NetworkConstants.DEFAULT_PORT:
 		_fail("Start emitted wrong port: %s" % str(_host_event))
 		return
+	if String(_host_event.get("password", "")) != EXPECTED_PASSWORD:
+		_fail("Start emitted wrong password: %s" % str(_host_event))
+		return
 
-	print("LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=%s address=%s port=%d" % [OUTPUT_PATH if DisplayServer.get_name() != "headless" else "skipped-headless", EXPECTED_ADDRESS, NetworkConstants.DEFAULT_PORT])
+	print("LOBBY_MANUAL_NETWORK_PASS screenshot=%s address=%s port=%d" % [OUTPUT_PATH if DisplayServer.get_name() != "headless" else "skipped-headless", EXPECTED_ADDRESS, NetworkConstants.DEFAULT_PORT])
 	quit(0)
 
-func _on_join_requested(address: String, port: int, loadout: Dictionary) -> void:
+func _on_join_requested(address: String, port: int, password: String, loadout: Dictionary) -> void:
 	_join_event = {
 		"address": address,
 		"port": port,
+		"password": password,
 		"loadout": loadout,
 	}
 
-func _on_host_requested(port: int, loadout: Dictionary) -> void:
+func _on_host_requested(port: int, password: String, loadout: Dictionary) -> void:
 	_host_event = {
 		"port": port,
+		"password": password,
 		"loadout": loadout,
 	}
 
@@ -115,5 +115,5 @@ func _save_screenshot(path: String) -> bool:
 	return true
 
 func _fail(message: String) -> void:
-	push_error("Lobby public IP routing validation failed: %s" % message)
+	push_error("Lobby manual network validation failed: %s" % message)
 	quit(1)

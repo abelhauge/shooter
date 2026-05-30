@@ -2,18 +2,13 @@ class_name LobbyMenu
 extends Control
 
 signal offline_requested(loadout: Dictionary)
-signal host_requested(port: int, loadout: Dictionary)
-signal join_requested(address: String, port: int, loadout: Dictionary)
+signal host_requested(port: int, password: String, loadout: Dictionary)
+signal join_requested(address: String, port: int, password: String, loadout: Dictionary)
 signal ready_requested()
 signal start_requested()
 
-const ABEL_PUBLIC_JOIN_ADDRESS := "203.0.113.77"
-const PUBLIC_IP_LOOKUP_URLS := [
-	"https://api.ipify.org?format=json",
-	"https://api64.ipify.org?format=json",
-	"https://checkip.amazonaws.com",
-	"http://api.ipify.org?format=json",
-]
+const NETWORK_SETTINGS_PATH := "user://network_settings.cfg"
+const SMOKE_MATCH_PASSWORD := "smoke-pass"
 const ITCH_TARGET := "abelhauge/shooter"
 const ITCH_PAGE_URL := "https://abelhauge.itch.io/shooter"
 const ITCH_LATEST_URL_TEMPLATE := "https://itch.io/api/1/x/wharf/latest?target=%s&channel_name=%s"
@@ -24,34 +19,24 @@ const SLOT_WEAPON_ORDER := {
 	&"artillery": [&"smoke_bomb", &"grenade", &"redbull"],
 }
 
-enum PublicNetworkMode {
-	DETECTING,
-	HOST,
-	JOIN,
-	WAITING_HOST,
-}
-
 var _status_label: Label
 var _name_edit: LineEdit
 var _address_edit: LineEdit
 var _port_edit: LineEdit
+var _password_edit: LineEdit
 var _lan_hosts_option: OptionButton
 var _join_lan_button: Button
-var _public_action_button: Button
+var _host_button: Button
+var _join_ip_button: Button
 var _ready_button: Button
 var _start_button: Button
-var _public_ip_request: HTTPRequest
 var _update_request: HTTPRequest
 var _update_banner: PanelContainer
 var _update_label: Label
 var _update_button: Button
 var _lan_hosts: Array[Dictionary] = []
-var _public_network_mode := PublicNetworkMode.DETECTING
 var _public_join_override := false
-var _detected_public_ip := ""
 var _latest_itch_version := ""
-var _public_ip_lookup_url_index := 0
-var _public_ip_lookup_failures: Array[String] = []
 var _selected_weapon_by_slot: Dictionary = {}
 var _slot_buttons_by_weapon: Dictionary = {}
 var _slot_weapon_ids_by_slot: Dictionary = {}
@@ -61,9 +46,12 @@ var _preview_entries: Array[Dictionary] = []
 
 func _ready() -> void:
 	_build_ui()
-	set_status("Checking public IP...")
+	_load_saved_network_settings()
+	if _address_edit != null and _address_edit.text.strip_edges() == "":
+		set_status("Enter Host IP, match password, then Join IP. Press Start to host.")
+	else:
+		set_status("Enter match password, then Join IP or Start.")
 	set_network_controls(false, false)
-	_begin_public_ip_detection()
 	_begin_update_check()
 	set_process(true)
 
@@ -88,40 +76,45 @@ func smoke_press_offline() -> void:
 	_on_offline_pressed()
 
 func smoke_press_host(port: int) -> void:
+	_ensure_smoke_match_password()
 	_port_edit.text = str(port)
 	_on_host_pressed()
 
 func smoke_press_join(address: String, port: int) -> void:
+	_ensure_smoke_match_password()
 	_address_edit.text = address
 	_port_edit.text = str(port)
 	_on_join_pressed()
+
+func smoke_set_host_address(address: String) -> void:
+	if _address_edit != null:
+		_address_edit.text = address.strip_edges()
+
+func smoke_set_match_password(password: String) -> void:
+	if _password_edit != null:
+		_password_edit.text = password
 
 func smoke_set_player_name(player_name: String) -> void:
 	if _name_edit != null:
 		_name_edit.text = player_name
 
-func smoke_press_join_abel() -> void:
-	_public_network_mode = PublicNetworkMode.JOIN
-	_on_public_action_pressed()
-
-func smoke_press_public_action() -> void:
-	_on_public_action_pressed()
-
-func smoke_force_public_ip(public_ip: String) -> void:
-	_apply_detected_public_ip(public_ip, "smoke")
+func smoke_press_join_ip() -> void:
+	_ensure_smoke_match_password()
+	_on_join_pressed()
 
 func smoke_enable_public_join_override() -> void:
 	set_public_join_override(true)
 
-func smoke_get_public_action_label() -> String:
-	return _public_action_button.text if _public_action_button != null else ""
+func smoke_get_host_action_label() -> String:
+	return _host_button.text if _host_button != null else ""
 
-func smoke_force_public_host_waiting() -> void:
-	set_public_host_waiting()
+func smoke_get_join_action_label() -> String:
+	return _join_ip_button.text if _join_ip_button != null else ""
 
 func smoke_press_join_lan(index := 0) -> bool:
 	if _lan_hosts.is_empty() or index < 0 or index >= _lan_hosts.size():
 		return false
+	_ensure_smoke_match_password()
 	_lan_hosts_option.select(index)
 	_on_join_lan_pressed()
 	return true
@@ -135,8 +128,8 @@ func smoke_press_start() -> void:
 func smoke_get_status() -> String:
 	return _status_label.text if _status_label != null else ""
 
-func smoke_get_public_ip_lookup_debug() -> String:
-	return " | ".join(_public_ip_lookup_failures)
+func smoke_has_manual_network_fields() -> bool:
+	return _address_edit != null and _password_edit != null and _join_ip_button != null and _host_button != null
 
 func smoke_get_lan_host_count() -> int:
 	return _lan_hosts.size()
@@ -180,7 +173,7 @@ func _build_ui() -> void:
 	_add_background_rect(Vector2(1098, 148), Vector2(76, 484), Color(0.76, 0.48, 0.16, 0.18))
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(930, 594)
+	panel.custom_minimum_size = Vector2(930, 640)
 	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.size = panel.custom_minimum_size
 	panel.position = -panel.custom_minimum_size * 0.5
@@ -231,39 +224,43 @@ func _build_ui() -> void:
 
 	_status_label = Label.new()
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status_label.custom_minimum_size = Vector2(0, 28)
 	_status_label.add_theme_font_size_override("font_size", 16)
 	_status_label.add_theme_color_override("font_color", Color(0.86, 0.94, 0.92, 1.0))
-	_status_label.visible = false
-	add_child(_status_label)
+	box.add_child(_status_label)
 
 	var network_label := Label.new()
 	network_label.text = "NETWORK TARGET"
 	network_label.add_theme_font_size_override("font_size", 13)
 	network_label.add_theme_color_override("font_color", Color(0.96, 0.58, 0.28, 1.0))
-	network_label.visible = false
 	box.add_child(network_label)
 
 	var network_row := HBoxContainer.new()
 	network_row.add_theme_constant_override("separation", 10)
-	network_row.visible = false
 	box.add_child(network_row)
 	_address_edit = LineEdit.new()
-	_address_edit.placeholder_text = "Host IP / LAN target"
-	_address_edit.text = "127.0.0.1"
-	_address_edit.custom_minimum_size = Vector2(410, 36)
+	_address_edit.placeholder_text = "Host IP"
+	_address_edit.text = ""
+	_address_edit.custom_minimum_size = Vector2(330, 36)
 	_style_line_edit(_address_edit)
 	network_row.add_child(_address_edit)
 
 	_port_edit = LineEdit.new()
 	_port_edit.placeholder_text = "Port"
 	_port_edit.text = str(NetworkConstants.DEFAULT_PORT)
-	_port_edit.custom_minimum_size = Vector2(140, 36)
+	_port_edit.custom_minimum_size = Vector2(106, 36)
 	_style_line_edit(_port_edit)
 	network_row.add_child(_port_edit)
 
+	_password_edit = LineEdit.new()
+	_password_edit.placeholder_text = "Match password"
+	_password_edit.secret = true
+	_password_edit.custom_minimum_size = Vector2(236, 36)
+	_style_line_edit(_password_edit)
+	network_row.add_child(_password_edit)
+
 	var lan_row := HBoxContainer.new()
 	lan_row.add_theme_constant_override("separation", 10)
-	lan_row.visible = false
 	box.add_child(lan_row)
 	_lan_hosts_option = OptionButton.new()
 	_lan_hosts_option.custom_minimum_size = Vector2(374, 34)
@@ -284,18 +281,24 @@ func _build_ui() -> void:
 	_create_slot_selector(box, "Artillery", &"artillery")
 
 	var action_row := GridContainer.new()
-	action_row.columns = 1
+	action_row.columns = 2
 	action_row.add_theme_constant_override("h_separation", 10)
 	action_row.add_theme_constant_override("v_separation", 8)
 	box.add_child(action_row)
 
-	_public_action_button = Button.new()
-	_public_action_button.text = "Detecting..."
-	_public_action_button.disabled = true
-	_style_button(_public_action_button, Color(0.32, 0.42, 0.70, 1.0))
-	_public_action_button.custom_minimum_size = Vector2(236, 38)
-	_public_action_button.pressed.connect(_on_public_action_pressed)
-	action_row.add_child(_public_action_button)
+	_host_button = Button.new()
+	_host_button.text = "Start"
+	_style_button(_host_button, Color(0.76, 0.38, 0.14, 1.0))
+	_host_button.custom_minimum_size = Vector2(236, 38)
+	_host_button.pressed.connect(_on_host_pressed)
+	action_row.add_child(_host_button)
+
+	_join_ip_button = Button.new()
+	_join_ip_button.text = "Join IP"
+	_style_button(_join_ip_button, Color(0.32, 0.42, 0.70, 1.0))
+	_join_ip_button.custom_minimum_size = Vector2(236, 38)
+	_join_ip_button.pressed.connect(_on_join_pressed)
+	action_row.add_child(_join_ip_button)
 
 	var ready_row := HBoxContainer.new()
 	ready_row.add_theme_constant_override("separation", 10)
@@ -347,6 +350,16 @@ func _create_update_banner(parent: VBoxContainer) -> void:
 func _read_port() -> int:
 	var port := int(_port_edit.text)
 	return NetworkConstants.DEFAULT_PORT if port <= 0 else port
+
+func _read_host_address() -> String:
+	return _address_edit.text.strip_edges() if _address_edit != null else ""
+
+func _read_match_password() -> String:
+	return _password_edit.text.strip_edges() if _password_edit != null else ""
+
+func _ensure_smoke_match_password() -> void:
+	if _password_edit != null and _password_edit.text.strip_edges() == "":
+		_password_edit.text = SMOKE_MATCH_PASSWORD
 
 func _create_slot_selector(parent: VBoxContainer, label_text: String, slot_type: StringName) -> void:
 	var header := HBoxContainer.new()
@@ -786,20 +799,23 @@ func _on_offline_pressed() -> void:
 	offline_requested.emit(_selected_loadout())
 
 func _on_host_pressed() -> void:
-	host_requested.emit(_read_port(), _selected_loadout())
+	var password := _read_match_password()
+	if password == "":
+		set_status("Enter a match password before hosting.")
+		return
+	host_requested.emit(_read_port(), password, _selected_loadout())
 
 func _on_join_pressed() -> void:
-	join_requested.emit(_address_edit.text.strip_edges(), _read_port(), _selected_loadout())
-
-func _on_public_action_pressed() -> void:
-	if _public_network_mode == PublicNetworkMode.HOST:
-		_on_host_pressed()
+	var address := _read_host_address()
+	var password := _read_match_password()
+	if address == "":
+		set_status("Enter a host IP address before joining.")
 		return
-	if _public_network_mode != PublicNetworkMode.JOIN:
+	if password == "":
+		set_status("Enter the match password before joining.")
 		return
-	_address_edit.text = ABEL_PUBLIC_JOIN_ADDRESS
-	_port_edit.text = str(NetworkConstants.DEFAULT_PORT)
-	join_requested.emit(ABEL_PUBLIC_JOIN_ADDRESS, NetworkConstants.DEFAULT_PORT, _selected_loadout())
+	_save_host_address(address)
+	join_requested.emit(address, _read_port(), password, _selected_loadout())
 
 func _on_join_lan_pressed() -> void:
 	if _lan_hosts.is_empty() or _lan_hosts_option == null:
@@ -815,9 +831,14 @@ func _on_join_lan_pressed() -> void:
 	if address == "" or port <= 0:
 		set_status("LAN match has no valid address.")
 		return
+	var password := _read_match_password()
+	if password == "":
+		set_status("Enter the match password before joining.")
+		return
+	_save_host_address(address)
 	_address_edit.text = address
 	_port_edit.text = str(port)
-	join_requested.emit(address, port, _selected_loadout())
+	join_requested.emit(address, port, password, _selected_loadout())
 
 func _on_ready_pressed() -> void:
 	ready_requested.emit()
@@ -906,125 +927,40 @@ func _version_number_parts(version: String) -> Array[int]:
 		parts.append(int(digits) if digits != "" else 0)
 	return parts
 
-func _begin_public_ip_detection() -> void:
-	if _public_join_override:
-		_apply_public_join_override_state()
-		return
-	_set_public_action_state(PublicNetworkMode.DETECTING)
-	_public_ip_request = HTTPRequest.new()
-	_public_ip_request.name = "PublicIpLookup"
-	_public_ip_request.timeout = 4.0
-	add_child(_public_ip_request)
-	_public_ip_request.request_completed.connect(_on_public_ip_request_completed)
-	_public_ip_lookup_url_index = 0
-	_public_ip_lookup_failures.clear()
-	_request_current_public_ip_lookup_url()
-
-func _request_current_public_ip_lookup_url() -> void:
-	if _public_join_override:
-		_apply_public_join_override_state()
-		return
-	if _public_ip_request == null or _public_ip_lookup_url_index >= PUBLIC_IP_LOOKUP_URLS.size():
-		_apply_public_ip_detection_failure("Public IP check failed. Join will use Abel's saved IP.")
-		return
-	var url := String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index])
-	var error := _public_ip_request.request(url)
-	if error != OK:
-		_public_ip_lookup_failures.append("%s start=%s" % [url, error_string(error)])
-		_try_next_public_ip_lookup_url()
-
-func _on_public_ip_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	if _public_join_override:
-		_apply_public_join_override_state()
-		return
-	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
-		_public_ip_lookup_failures.append("%s result=%d http=%d" % [
-			String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]),
-			result,
-			response_code,
-		])
-		_try_next_public_ip_lookup_url()
-		return
-	var public_ip := _parse_public_ip_response(body)
-	if public_ip == "":
-		_public_ip_lookup_failures.append("%s invalid-body" % String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]))
-		_try_next_public_ip_lookup_url()
-		return
-	_apply_detected_public_ip(public_ip, String(PUBLIC_IP_LOOKUP_URLS[_public_ip_lookup_url_index]))
-
-func _try_next_public_ip_lookup_url() -> void:
-	if _public_join_override:
-		_apply_public_join_override_state()
-		return
-	_public_ip_lookup_url_index += 1
-	if _public_ip_lookup_url_index < PUBLIC_IP_LOOKUP_URLS.size():
-		_request_current_public_ip_lookup_url.call_deferred()
-		return
-	push_warning("Public IP lookup failed: %s" % " | ".join(_public_ip_lookup_failures))
-	_apply_public_ip_detection_failure("Public IP check failed. Join will use Abel's saved IP.")
-
-func _parse_public_ip_response(body: PackedByteArray) -> String:
-	var text := body.get_string_from_utf8().strip_edges()
-	if text.begins_with("{") or text.begins_with("["):
-		var parsed = JSON.parse_string(text)
-		if typeof(parsed) == TYPE_DICTIONARY:
-			var ip := String((parsed as Dictionary).get("ip", "")).strip_edges()
-			return ip if ip.is_valid_ip_address() else ""
-	return text if text.is_valid_ip_address() else ""
-
-func _apply_detected_public_ip(public_ip: String, lookup_source := "") -> void:
-	if _public_join_override:
-		_apply_public_join_override_state()
-		return
-	_detected_public_ip = public_ip.strip_edges()
-	if lookup_source != "smoke":
-		var source := lookup_source if lookup_source != "" else "unknown"
-		print("Public IP detected via %s: %s" % [source, _detected_public_ip])
-	if _detected_public_ip == ABEL_PUBLIC_JOIN_ADDRESS:
-		_set_public_action_state(PublicNetworkMode.HOST)
-		set_status("Public IP %s matches Abel's host. Press Start." % _detected_public_ip)
-	else:
-		_set_public_action_state(PublicNetworkMode.JOIN)
-		set_status("Public IP %s is a client. Press Join to connect to Abel." % _detected_public_ip)
-
-func _apply_public_ip_detection_failure(message: String) -> void:
-	if _public_join_override:
-		_apply_public_join_override_state()
-		return
-	_set_public_action_state(PublicNetworkMode.WAITING_HOST)
-	set_status(message)
-
-func set_public_host_waiting(message := "Venter på Host.") -> void:
-	_set_public_action_state(PublicNetworkMode.WAITING_HOST)
-	set_status(message)
-
 func set_public_join_override(enabled := true) -> void:
 	_public_join_override = enabled
-	if _public_ip_request != null:
-		_public_ip_request.cancel_request()
 	if _public_join_override:
 		_apply_public_join_override_state()
 
 func _apply_public_join_override_state() -> void:
-	_set_public_action_state(PublicNetworkMode.JOIN)
-	set_status("--join selected. Press Join to connect to Abel.")
+	set_status("--join selected. Enter Host IP and match password, then press Join IP.")
 
-func _set_public_action_state(mode: int) -> void:
-	_public_network_mode = mode
-	if _public_action_button == null:
+func set_manual_host_address(address: String) -> void:
+	if _address_edit != null:
+		_address_edit.text = address.strip_edges()
+
+func set_match_password(password: String) -> void:
+	if _password_edit != null:
+		_password_edit.text = password
+
+func _load_saved_network_settings() -> void:
+	if OS.get_environment("SHOOTER_DISABLE_NETWORK_SETTINGS") == "1":
 		return
-	_public_action_button.disabled = false
-	if mode == PublicNetworkMode.HOST:
-		_public_action_button.text = "Start"
-		_style_button(_public_action_button, Color(0.76, 0.38, 0.14, 1.0))
-	elif mode == PublicNetworkMode.JOIN:
-		_public_action_button.text = "Join"
-		_style_button(_public_action_button, Color(0.32, 0.42, 0.70, 1.0))
-	elif mode == PublicNetworkMode.WAITING_HOST:
-		_public_action_button.text = "Venter på Host"
-		_public_action_button.disabled = true
-		_style_button(_public_action_button, Color(0.28, 0.32, 0.34, 1.0))
-	else:
-		_public_action_button.text = "Detecting..."
-		_public_action_button.disabled = true
-		_style_button(_public_action_button, Color(0.20, 0.30, 0.34, 1.0))
+	var config := ConfigFile.new()
+	if config.load(NETWORK_SETTINGS_PATH) != OK:
+		return
+	var address := String(config.get_value("network", "last_host_address", "")).strip_edges()
+	if address != "" and _address_edit != null:
+		_address_edit.text = address
+
+func _save_host_address(address: String) -> void:
+	if OS.get_environment("SHOOTER_DISABLE_NETWORK_SETTINGS") == "1":
+		return
+	address = address.strip_edges()
+	if address == "":
+		return
+	var config := ConfigFile.new()
+	config.set_value("network", "last_host_address", address)
+	var error := config.save(NETWORK_SETTINGS_PATH)
+	if error != OK:
+		push_warning("Could not save host address: %s" % error_string(error))

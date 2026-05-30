@@ -1,8 +1,9 @@
 extends SceneTree
 
 const LOBBY_SCENE := preload("res://scenes/frontend/lobby_menu.tscn")
-const OUTPUT_PATH := "res://docs/verification/screenshots/lobby_public_join_override.png"
+const OUTPUT_PATH := "res://docs/verification/screenshots/lobby_manual_join_override.png"
 const EXPECTED_ADDRESS := "203.0.113.77"
+const EXPECTED_PASSWORD := "override-pass"
 
 var _join_event := {}
 
@@ -10,6 +11,7 @@ func _initialize() -> void:
 	_validate.call_deferred()
 
 func _validate() -> void:
+	OS.set_environment("SHOOTER_DISABLE_NETWORK_SETTINGS", "1")
 	root.size = Vector2i(1280, 720)
 	var lobby: LobbyMenu = LOBBY_SCENE.instantiate()
 	root.add_child(lobby)
@@ -19,14 +21,14 @@ func _validate() -> void:
 		await process_frame
 
 	lobby.smoke_enable_public_join_override()
-	if lobby.smoke_get_public_action_label() != "Join":
-		_fail("join override did not show Join: %s" % lobby.smoke_get_public_action_label())
+	if not lobby.smoke_has_manual_network_fields():
+		_fail("join override did not show manual network fields")
 		return
-
-	lobby.smoke_force_public_ip(EXPECTED_ADDRESS)
-	if lobby.smoke_get_public_action_label() != "Join":
-		_fail("Abel public IP overrode join override: %s" % lobby.smoke_get_public_action_label())
+	if not lobby.smoke_get_status().contains("Host IP"):
+		_fail("join override did not prompt for Host IP: %s" % lobby.smoke_get_status())
 		return
+	lobby.smoke_set_host_address(EXPECTED_ADDRESS)
+	lobby.smoke_set_match_password(EXPECTED_PASSWORD)
 
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
@@ -35,12 +37,15 @@ func _validate() -> void:
 			_fail("could not save screenshot %s: %s" % [OUTPUT_PATH, error_string(error)])
 			return
 
-	lobby.smoke_press_public_action()
+	lobby.smoke_press_join_ip()
 	if _join_event.is_empty():
 		_fail("Join override did not emit join_requested")
 		return
 	if String(_join_event.get("address", "")) != EXPECTED_ADDRESS:
 		_fail("Join override emitted wrong address: %s" % str(_join_event))
+		return
+	if String(_join_event.get("password", "")) != EXPECTED_PASSWORD:
+		_fail("Join override emitted wrong password: %s" % str(_join_event))
 		return
 
 	print("LOBBY_JOIN_OVERRIDE_PASS screenshot=%s address=%s" % [
@@ -49,10 +54,11 @@ func _validate() -> void:
 	])
 	quit(0)
 
-func _on_join_requested(address: String, port: int, loadout: Dictionary) -> void:
+func _on_join_requested(address: String, port: int, password: String, loadout: Dictionary) -> void:
 	_join_event = {
 		"address": address,
 		"port": port,
+		"password": password,
 		"loadout": loadout,
 	}
 

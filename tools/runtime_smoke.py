@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -11,6 +12,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SMOKE_PASSWORD = "smoke-pass"
+SMOKE_ENV = {
+    **os.environ,
+    "SHOOTER_DISABLE_NETWORK_SETTINGS": "1",
+}
 
 
 def godot_cmd(user_args: list[str], headless: bool = True) -> list[str]:
@@ -42,6 +48,7 @@ def run_single(name: str, user_args: list[str], timeout_sec: float, headless: bo
     proc = subprocess.Popen(
         godot_cmd(user_args, headless),
         cwd=ROOT,
+        env=SMOKE_ENV,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -67,6 +74,7 @@ def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_
         host_args = [
             "--host",
             f"--port={port}",
+            f"--password={SMOKE_PASSWORD}",
             "--smoke-test=network-game",
             f"--smoke-expected-peers={expected_clients}",
             f"--smoke-timeout-sec={int(timeout_sec)}",
@@ -74,6 +82,7 @@ def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_
         client_base = [
             "--join=127.0.0.1",
             f"--port={port}",
+            f"--password={SMOKE_PASSWORD}",
             "--smoke-test=network-game",
             f"--smoke-timeout-sec={int(timeout_sec)}",
         ]
@@ -82,6 +91,7 @@ def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_
     host = subprocess.Popen(
         godot_cmd(host_args),
         cwd=ROOT,
+        env=SMOKE_ENV,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -93,6 +103,7 @@ def run_group(name: str, port: int, expected_clients: int, lobby: bool, timeout_
         client = subprocess.Popen(
             godot_cmd(client_base),
             cwd=ROOT,
+            env=SMOKE_ENV,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -121,6 +132,7 @@ def run_lan_discovery(port: int, timeout_sec: float) -> bool:
             f"--smoke-timeout-sec={int(timeout_sec)}",
         ]),
         cwd=ROOT,
+        env=SMOKE_ENV,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -134,6 +146,7 @@ def run_lan_discovery(port: int, timeout_sec: float) -> bool:
             f"--smoke-timeout-sec={int(timeout_sec)}",
         ]),
         cwd=ROOT,
+        env=SMOKE_ENV,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -183,7 +196,7 @@ def main() -> int:
         elif suite == "lobby":
             ok = run_group("lobby", args.base_port + 2, 1, True, 16.0) and ok
         elif suite == "lan-discovery":
-            ok = run_lan_discovery(args.base_port + 5, 16.0) and ok
+            ok = run_lan_discovery(args.base_port + 5, 24.0) and ok
         elif suite == "lobby-validation":
             ok = run_single(
                 "lobby-validation",

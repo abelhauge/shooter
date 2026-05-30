@@ -1167,12 +1167,12 @@ SMOKE_PASS lan-discovery-host
 SMOKE_PASS lan-discovery-client
 EXIT=0
 
-$ ./run.sh -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+$ ./run.sh -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_button.png address=203.0.113.77 port=51873
 EXIT=0
 ```
 
-Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
+Visual QA for `docs/verification/screenshots/lobby_manual_join_button.png`:
 
 - The lobby remains centered and the `Join` action is visible without overlapping the loadout selector.
 - Weapon preview cards still render in all four rows after the network-flow changes.
@@ -2774,14 +2774,15 @@ Visual QA for `docs/verification/screenshots/weapon_visual_qa/`:
 - Flamethrower, lasso, taser gun and portal gun are visible in the lower-right weapon area without covering the crosshair or HUD panels.
 - Knife and Redbull are visible as external Kenney assets rather than project-owned procedural geometry.
 
-## Public IP Lobby Routing
+## Manual Host IP Lobby
 
 Date: 2026-05-30
 
-- Lobby online action now checks `https://api.ipify.org?format=json` through Godot `HTTPRequest`.
-- If the detected public IP equals Abel's hardcoded host IP, the lobby shows `Host game`.
-- Other machines show a single `Join` button that connects to Abel's saved public IP.
-- Launch args now support `--host` and `--join`; `--join` without an address uses Abel's saved public IP, while `--join=<ip>` still works for tests/manual overrides.
+- Public host-IP routing was removed after the repo became public.
+- The project no longer contains a saved public host IP and the lobby no longer auto-detects host/client mode from the machine's public IP.
+- First client launch shows a blank `Host IP` field; after a successful manual join, only the last host address is saved locally in `user://network_settings.cfg`.
+- Hosts and clients must enter a match password before online play; direct launch supports `--password=<password>` or `SHOOTER_MATCH_PASSWORD`.
+- `./run.sh --join` opens the manual Host IP/password lobby; `./run.sh --join=<ip> --password=<password>` is the direct connect path for automation and smoke tests.
 - Weapon selection is now visual and horizontal: each loadout slot renders selectable rotating 3D weapon cards instead of dropdowns.
 - The cards contain only the 3D weapon preview; the selected weapon name and feature summary are shown beside the slot label.
 
@@ -2792,8 +2793,8 @@ $ python3 tools/validate_static.py
 static validation passed
 EXIT=0
 
-$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=skipped-headless address=203.0.113.77 port=24565
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh --headless -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=skipped-headless address=203.0.113.77 port=51873
 EXIT=0
 
 $ SHOOTER_SKIP_GIT_SYNC=1 python3 tools/runtime_smoke.py offline
@@ -2818,15 +2819,16 @@ SMOKE_PASS lobby-host: lobby host started match with 1 expected peer(s)
 SMOKE_PASS lobby-client: lobby client joined, readied, and entered game
 EXIT=0
 
-$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+$ SHOOTER_SKIP_GIT_SYNC=1 ./run.sh -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_button.png address=203.0.113.77 port=51873
 EXIT=0
 ```
 
-Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
+Visual QA for `docs/verification/screenshots/lobby_manual_join_button.png`:
 
-- The lobby shows one online action for the simulated client state: `Join`.
-- The old `Host Private Match`, `Join By IP`, and `Join Abel` buttons are no longer visible in the player-facing lobby action row.
+- The lobby shows manual `Host IP`, `Port`, and secret `Match password` fields.
+- The online actions are `Start`, `Join IP`, and `Join LAN`; there is no saved public-host action.
+- The old `Host Private Match`, public join, and saved-host buttons are no longer visible in the player-facing lobby action row.
 - Primary, secondary and artillery slots are horizontal rows of textless 3D weapon preview cards; the selected cards use a bright border.
 - Selected slot summaries show weapon name and relevant features beside `PRIMARY`, `SECONDARY`, `MELEE` and `ARTILLERY`.
 - The rendered previews are isolated per card and show distinct silhouettes/colors for guns, knife, grenades/smoke and Redbull.
@@ -2836,7 +2838,7 @@ Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
 
 Date: 2026-05-30
 
-- Removed the visible public-IP status line from the lobby while keeping the internal status text available for smoke validation and network callbacks.
+- Removed the visible public IP status line from the lobby while keeping the internal status text available for smoke validation and network callbacks.
 - Removed the right-side `LOADOUT CHECK` briefing panel.
 - Expanded the main lobby panel and increased the weapon preview card sizes so the horizontal weapon selector has more room.
 
@@ -2855,8 +2857,8 @@ $ python3 tools/runtime_smoke.py weapons
 SMOKE_PASS weapons: lobby options and all weapon resources fired without runtime errors
 EXIT=0
 
-$ ./run.sh -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+$ ./run.sh -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_button.png address=203.0.113.77 port=51873
 EXIT=0
 
 $ ./run.sh -- --verification-capture=lan-discovery-lobby
@@ -2864,9 +2866,9 @@ VERIFICATION_CAPTURE_PASS lan-discovery-lobby
 EXIT=0
 ```
 
-Visual QA for `docs/verification/screenshots/lobby_public_join_button.png`:
+Visual QA for `docs/verification/screenshots/lobby_manual_join_button.png`:
 
-- The lobby no longer shows the `LOADOUT CHECK` panel or the public-IP status sentence.
+- The lobby no longer shows the `LOADOUT CHECK` panel or the public IP status sentence.
 - The primary, secondary, melee and artillery weapon selectors are wider and taller, with larger 3D preview cards.
 - The `Offline Dev Match` and `Join` actions remain visible below the weapon selector without overlapping the artillery row.
 
@@ -2896,15 +2898,15 @@ $ ./run.sh -- --verification-capture=lan-discovery-lobby
 VERIFICATION_CAPTURE_PASS lan-discovery-lobby
 EXIT=0
 
-$ ./run.sh -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+$ ./run.sh -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_button.png address=203.0.113.77 port=51873
 EXIT=0
 ```
 
 Visual QA:
 
 - `docs/verification/screenshots/lan_discovery_lobby.png` shows the lobby panel centered in the fullscreen 3840x2160 viewport.
-- `docs/verification/screenshots/lobby_public_join_button.png` shows the same panel centered in a 1280x720 capture, with balanced left and right margins.
+- `docs/verification/screenshots/lobby_manual_join_button.png` shows the same panel centered in a 1280x720 capture, with balanced left and right margins.
 - Weapon cards, selected weapon summaries, and action buttons remain visible without overlap after the centering change.
 
 ## Startup Fullscreen
@@ -3053,8 +3055,8 @@ $ python3 tools/runtime_smoke.py offline
 SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
 EXIT=0
 
-$ ./run.sh -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+$ ./run.sh -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_button.png address=203.0.113.77 port=51873
 EXIT=0
 
 $ ./run.sh -- --verification-capture=lan-discovery-lobby
@@ -3064,7 +3066,7 @@ EXIT=0
 
 Visual QA:
 
-- `docs/verification/screenshots/lobby_public_join_button.png` shows the forced update banner in the 1280x720 lobby without clipping the bottom action buttons.
+- `docs/verification/screenshots/lobby_manual_join_button.png` shows the forced update banner in the 1280x720 lobby without clipping the bottom action buttons.
 - The banner text includes the latest version and current version, and the `Update` button is visible on the right side.
 - Weapon rows, summaries and action buttons remain readable with the banner visible.
 - `docs/verification/screenshots/lan_discovery_lobby.png` shows the normal lobby state remains centered and uncluttered when no update banner is visible during capture.
@@ -3113,13 +3115,13 @@ Visual QA screenshots:
 - `docs/verification/screenshots/weapon_visual_qa/redbull.png`: can uses the Kenney red/blue source material bands instead of a plain blue override.
 - `docs/verification/screenshots/weapon_visual_qa/portal_gun.png`: portal gun/crossbow is forward-facing rather than sideways and keeps source orange/grey/black material zones.
 
-## Lobby Public Match Actions
+## Lobby Manual Match Actions
 
 Date: 2026-05-30
 
 - The visible lobby no longer exposes `Offline Dev Match`; offline/dev entry points remain available only to verification hooks.
-- The public host action now reads `Start` instead of `Host game`.
-- When the public host is not reachable or public IP detection fails, the public action enters a disabled `Venter på Host` state.
+- The online action row now exposes explicit `Start` and `Join IP` actions instead of a public IP-derived action.
+- `Join LAN` still uses discovered LAN hosts, but it also requires the same match password as manual IP joins.
 
 Validation:
 
@@ -3140,28 +3142,27 @@ $ python3 tools/runtime_smoke.py offline
 SMOKE_PASS offline: offline game scene, movement/combat/HUD/match/art smoke passed
 EXIT=0
 
-$ ./run.sh -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+$ ./run.sh -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_button.png address=203.0.113.77 port=51873
 EXIT=0
 
-$ ./run.sh -s tools/validate_public_ip_lookup.gd
-PUBLIC_IP_LOOKUP_PASS label=Start status=Public IP 203.0.113.77 matches Abel's host. Press Start. ...
+$ ./run.sh -s tools/validate_manual_network_fields.gd
+MANUAL_NETWORK_FIELDS_PASS status=Enter Host IP, match password, then Join IP. Press Start to host.
 EXIT=0
 ```
 
 Visual QA:
 
-- `docs/verification/screenshots/lobby_public_join_button.png` shows the lobby action row with only the public `Join` button; `Offline Dev Match` is absent and the button does not overlap the artillery selector.
-- `docs/verification/screenshots/lobby_public_waiting_host_button.png` shows the disabled `Venter på Host` button fitting inside its control and remaining readable.
-- `docs/verification/screenshots/lobby_public_start_button.png` shows the host-side `Start` button below the loadout selector, with the lobby still centered and uncluttered.
+- `docs/verification/screenshots/lobby_manual_join_button.png` shows the lobby action row with `Start` and `Join IP`; `Offline Dev Match` is absent and the buttons do not overlap the artillery selector.
+- `docs/verification/screenshots/lobby_manual_start_button.png` shows the host-side `Start` path below the loadout selector, with the lobby still centered and uncluttered.
 
 ## Bare Join Argument Override
 
 Date: 2026-05-30
 
-- Bare `./run.sh --join` now opens the lobby in forced client mode instead of immediately connecting to Abel's saved IP.
-- The override keeps the public action on `Join` even if the public IP lookup later reports Abel's host IP.
-- `./run.sh --join=<ip>` remains the direct-connect path used by automation and network smoke tests.
+- Bare `./run.sh --join` now opens the lobby in forced client mode instead of immediately connecting to a saved public IP.
+- The override prompts for manual Host IP and match password instead of using public IP lookup.
+- `./run.sh --join=<ip> --password=<password>` remains the direct-connect path used by automation and network smoke tests.
 
 Validation:
 
@@ -3171,31 +3172,31 @@ static validation passed
 EXIT=0
 
 $ ./run.sh --headless -- --join --smoke-test=join-override-lobby --smoke-timeout-sec=6
-SMOKE_PASS join-override-lobby: bare --join keeps lobby in client Join mode
+SMOKE_PASS join-override-lobby: bare --join opens manual Host IP/password join prompt
 EXIT=0
 
 $ ./run.sh -s tools/validate_lobby_join_override.gd
-LOBBY_JOIN_OVERRIDE_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_override.png address=203.0.113.77
+LOBBY_JOIN_OVERRIDE_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_override.png address=203.0.113.77
 EXIT=0
 
 $ python3 tools/runtime_smoke.py lobby-validation
 SMOKE_PASS lobby-validation: empty-IP lobby validation status works
 EXIT=0
 
-$ ./run.sh -s tools/validate_lobby_join_abel.gd
-LOBBY_PUBLIC_IP_ROUTING_PASS screenshot=res://docs/verification/screenshots/lobby_public_join_button.png address=203.0.113.77 port=24565
+$ ./run.sh -s tools/validate_lobby_manual_network.gd
+LOBBY_MANUAL_NETWORK_PASS screenshot=res://docs/verification/screenshots/lobby_manual_join_button.png address=203.0.113.77 port=51873
 EXIT=0
 
-$ ./run.sh -s tools/validate_public_ip_lookup.gd
-PUBLIC_IP_LOOKUP_PASS label=Start status=Public IP 203.0.113.77 matches Abel's host. Press Start. ...
+$ ./run.sh -s tools/validate_manual_network_fields.gd
+MANUAL_NETWORK_FIELDS_PASS status=Enter Host IP, match password, then Join IP. Press Start to host.
 EXIT=0
 ```
 
 Visual QA:
 
-- `docs/verification/screenshots/lobby_public_join_override.png` shows the centered lobby with the public action button reading `Join` below the artillery row.
+- `docs/verification/screenshots/lobby_manual_join_override.png` shows the centered lobby with manual Host IP/password controls and the `Join IP` action below the artillery row.
 - The loadout preview rows still render and the action button does not overlap or push content outside the 1280x720 viewport.
-- The host-side public-IP path is still covered separately by `lobby_public_start_button.png`, so the override does not remove Abel's normal `Start` state when no `--join` override is used.
+- The host-side path is still covered separately by `lobby_manual_start_button.png`, so the override does not remove the normal `Start` action when no `--join` override is used.
 
 ## Run Script Git Pull
 

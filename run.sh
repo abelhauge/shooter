@@ -159,7 +159,7 @@ for arg in "$@"; do
     continue
   fi
   case "$arg" in
-    --host|--join|--join=*|--port=*|--name=*|--smoke-*|--verification-capture=*|--p06-driver-pose|--p07-*|--p08-*|--p10a-*|--p11-*|--p12-*|--p13-*|--p14-*)
+    --host|--join|--join=*|--port=*|--name=*|--password=*|--smoke-*|--verification-capture=*|--p06-driver-pose|--p07-*|--p08-*|--p10a-*|--p11-*|--p12-*|--p13-*|--p14-*)
       APP_ARGS+=("$arg")
       ;;
     *)
@@ -167,6 +167,69 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+append_match_password_if_needed() {
+  local needs_password=0
+  local has_password=0
+  local is_smoke_or_verification=0
+  local has_headless=0
+  local has_non_headless_godot_arg=0
+
+  if [[ "${#APP_ARGS[@]}" -gt 0 ]]; then
+    for arg in "${APP_ARGS[@]}"; do
+      case "$arg" in
+        --host|--join=*)
+          needs_password=1
+          ;;
+        --password=*)
+          has_password=1
+          ;;
+        --smoke-*|--verification-capture=*)
+          is_smoke_or_verification=1
+          ;;
+      esac
+    done
+  fi
+
+  if [[ "${#GODOT_ARGS[@]}" -gt 0 ]]; then
+    for arg in "${GODOT_ARGS[@]}"; do
+      if [[ "$arg" == "--headless" ]]; then
+        has_headless=1
+      else
+        has_non_headless_godot_arg=1
+      fi
+    done
+  fi
+
+  if [[ "$has_headless" -eq 1 && "$has_non_headless_godot_arg" -eq 0 && "$is_smoke_or_verification" -eq 0 ]]; then
+    needs_password=1
+  fi
+
+  if [[ "$needs_password" -eq 0 || "$has_password" -eq 1 ]]; then
+    return 0
+  fi
+
+  if [[ -n "${SHOOTER_MATCH_PASSWORD:-}" ]]; then
+    APP_ARGS+=("--password=$SHOOTER_MATCH_PASSWORD")
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    echo "Match password required. Pass --password=<password> or set SHOOTER_MATCH_PASSWORD." >&2
+    exit 1
+  fi
+
+  local match_password
+  read -r -s -p "Match password: " match_password
+  echo >&2
+  if [[ -z "$match_password" ]]; then
+    echo "Match password cannot be empty." >&2
+    exit 1
+  fi
+  APP_ARGS+=("--password=$match_password")
+}
+
+append_match_password_if_needed
 
 if [[ "${#APP_ARGS[@]}" -gt 0 ]]; then
   if [[ "${#GODOT_ARGS[@]}" -gt 0 ]]; then
